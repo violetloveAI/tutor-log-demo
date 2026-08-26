@@ -336,6 +336,80 @@ function IconButton({ label, children, onClick, pressed }: { label: string; chil
   return <button className="icon-button" onClick={onClick} aria-label={label} aria-pressed={pressed}>{children}</button>;
 }
 
+function FieldLabel({ children, required = false }: { children: React.ReactNode; required?: boolean }) {
+  return <span>{children}{required && <><b className="required-mark" aria-hidden="true">*</b><span className="sr-only">（必填）</span></>}</span>;
+}
+
+function useLongPress<T>(onPress: (item: T) => void, onLongPress: (item: T) => void, delay = 650) {
+  const timerRef = useRef<number | null>(null);
+  const resetRef = useRef<number | null>(null);
+  const startRef = useRef({ x: 0, y: 0 });
+  const targetRef = useRef<HTMLElement | null>(null);
+  const firedRef = useRef(false);
+  const cancelledRef = useRef(false);
+
+  function clearTimer() {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+    targetRef.current?.classList.remove('long-pressing');
+  }
+
+  useEffect(() => () => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
+  }, []);
+
+  return (item: T) => ({
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      clearTimer();
+      if (resetRef.current !== null) window.clearTimeout(resetRef.current);
+      firedRef.current = false;
+      cancelledRef.current = false;
+      startRef.current = { x: event.clientX, y: event.clientY };
+      targetRef.current = event.currentTarget;
+      event.currentTarget.classList.add('long-pressing');
+      timerRef.current = window.setTimeout(() => {
+        const target = targetRef.current;
+        firedRef.current = true;
+        timerRef.current = null;
+        target?.classList.remove('long-pressing');
+        target?.classList.add('long-press-selected');
+        onLongPress(item);
+        resetRef.current = window.setTimeout(() => {
+          firedRef.current = false;
+          target?.classList.remove('long-press-selected');
+        }, 900);
+      }, delay);
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+      if (Math.hypot(event.clientX - startRef.current.x, event.clientY - startRef.current.y) <= 10) return;
+      cancelledRef.current = true;
+      clearTimer();
+    },
+    onPointerUp: clearTimer,
+    onPointerCancel: () => {
+      cancelledRef.current = true;
+      clearTimer();
+    },
+    onPointerLeave: (event: React.PointerEvent<HTMLElement>) => {
+      if (event.pointerType === 'mouse') clearTimer();
+    },
+    onContextMenu: (event: React.MouseEvent<HTMLElement>) => event.preventDefault(),
+    onClick: (event: React.MouseEvent<HTMLElement>) => {
+      if (firedRef.current || cancelledRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        firedRef.current = false;
+        cancelledRef.current = false;
+        event.currentTarget.classList.remove('long-press-selected');
+        return;
+      }
+      onPress(item);
+    },
+  });
+}
+
 export default function Home() {
   const rootRef = useRef<HTMLElement>(null);
   const statsContentRef = useRef<HTMLDivElement>(null);
@@ -369,6 +443,10 @@ export default function Home() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
   const [showScheduleEntries, setShowScheduleEntries] = useState(true);
+  const agendaLessonPress = useLongPress<Lesson>(
+    (lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' }),
+    (lesson) => deleteLesson(lesson.id),
+  );
 
   useEffect(() => {
     try {
@@ -579,9 +657,13 @@ export default function Home() {
   }
 
   function deleteLesson(id: string) {
-    if (window.confirm('确定删除这节课程吗？此操作不可撤销。')) {
-      setLessons((items) => items.filter((item) => item.id !== id)); setLessonDraft(null);
-    }
+    if (!window.confirm('确定删除这节课程吗？此操作不可撤销。')) return false;
+    setLessons((items) => items.filter((item) => item.id !== id));
+    setLessonDraft(null);
+    setSavedToastMessage('课程已删除');
+    setSavedToast(true);
+    window.setTimeout(() => setSavedToast(false), 1800);
+    return true;
   }
 
   function saveScheduleEntry() {
@@ -711,13 +793,13 @@ export default function Home() {
                     return <button key={cell.date} style={tint ? { background: tint } : undefined} onClick={() => setSelectedDate(cell.date)} className={`date-cell ${dayLessons.length ? 'has-lessons' : ''} ${dayScheduleEntries.length ? 'has-schedule-entry' : ''} ${cell.date === selectedDate ? 'active' : ''} ${!cell.current ? 'outside' : ''}`} aria-label={`${cell.date}${dayLessons.length ? `，${dayLessons.length}节课：${lessonNames}` : ''}${dayScheduleEntries.length ? `，${dayScheduleEntries.length}项待办或提醒` : ''}`}><span>{cell.day}</span>{colors.length > 0 && <i className="student-color-dots" aria-hidden="true">{colors.slice(0, 3).map((color, index) => <b key={`${color}-${index}`} style={{ backgroundColor: color }} />)}</i>}{dayScheduleEntries.length > 0 && <i className="calendar-schedule-mark" aria-hidden="true"><b /></i>}</button>;
                   })}
                 </div>
-              </> : <WeekCalendar selectedDate={selectedDate} lessons={calendarLessons} scheduleEntries={visibleScheduleEntries} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} onScheduleEntry={(entry) => setScheduleDraft({ ...entry, scheduleMode: 'single' })} />}
+              </> : <WeekCalendar selectedDate={selectedDate} lessons={calendarLessons} scheduleEntries={visibleScheduleEntries} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} onDeleteLesson={(lesson) => deleteLesson(lesson.id)} onScheduleEntry={(entry) => setScheduleDraft({ ...entry, scheduleMode: 'single' })} />}
             </section>
 
             <section className="schedule-section">
               <div className="section-heading">
                 <div><p className="eyebrow">{formatShortDate(selectedDate)}</p><h3>当天安排</h3></div>
-                <span className="count-badge">{selectedLessons.length} 课 · {selectedScheduleEntries.length} 事项</span>
+                <div className="schedule-heading-meta"><small>长按课程可删除</small><span className="count-badge">{selectedLessons.length} 课 · {selectedScheduleEntries.length} 事项</span></div>
               </div>
               {selectedAgenda.length ? selectedAgenda.map((agendaItem) => {
                 if (agendaItem.type === 'schedule') {
@@ -732,7 +814,7 @@ export default function Home() {
                 }
                 const lesson = agendaItem.lesson;
                 const student = studentMap[lesson.studentId];
-                return <button className="lesson-card" style={{ borderLeftColor: studentColor(student) }} key={lesson.id} onClick={() => setLessonDraft({ ...lesson, scheduleMode: 'single' })}>
+                return <button className="lesson-card long-pressable" style={{ borderLeftColor: studentColor(student) }} key={lesson.id} {...agendaLessonPress(lesson)} aria-label={`${student?.nickname || student?.name}的${lesson.subject}课程，点击编辑，长按删除`}>
                   <div className="time-block"><strong>{lesson.startTime}</strong><span>{lesson.duration} 分钟</span></div>
                   <div className="lesson-line" />
                   <div className="lesson-info"><div className="avatar" style={avatarStyle(student)}>{student?.nickname?.[0] || student?.name?.[0]}</div><div><strong>{student?.nickname || student?.name} · {lesson.subject}</strong><p className="lesson-location"><MapPin size={12} aria-hidden="true" />{student?.locationShort || '地点待填写'}</p><p>{lesson.teachingContent || '等待填写课后记录'}</p></div></div>
@@ -862,7 +944,7 @@ function CalendarFilters({ students, selectedStudentIds, selectedSubjects, showS
   </section>;
 }
 
-function WeekCalendar({ selectedDate, lessons, scheduleEntries, students, onSelectDate, onLesson, onScheduleEntry }: { selectedDate: string; lessons: Lesson[]; scheduleEntries: ScheduleEntry[]; students: Record<string, Student>; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void; onScheduleEntry: (entry: ScheduleEntry) => void }) {
+function WeekCalendar({ selectedDate, lessons, scheduleEntries, students, onSelectDate, onLesson, onDeleteLesson, onScheduleEntry }: { selectedDate: string; lessons: Lesson[]; scheduleEntries: ScheduleEntry[]; students: Record<string, Student>; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void; onDeleteLesson: (lesson: Lesson) => void; onScheduleEntry: (entry: ScheduleEntry) => void }) {
   const start = weekStartFor(selectedDate);
   const days = weekDays.map((label, index) => ({ label, date: dateFrom(start, index) }));
   const [expanded, setExpanded] = useState(false);
@@ -909,9 +991,9 @@ function WeekCalendar({ selectedDate, lessons, scheduleEntries, students, onSele
         <button type="button" className="selected" aria-pressed="true">简略版</button>
         <button type="button" ref={expandButtonRef} aria-pressed="false" onClick={() => setExpanded(true)}><Maximize2 size={14} aria-hidden="true" />完整课表</button>
       </div>
-      <small>色块与切角事项都对应时间</small>
+      <small>点击编辑 · 长按课程删除</small>
     </div>
-    <WeekTimeline compact days={days} lessons={lessons} scheduleEntries={scheduleEntries} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={onLesson} onScheduleEntry={onScheduleEntry} />
+    <WeekTimeline compact days={days} lessons={lessons} scheduleEntries={scheduleEntries} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={onLesson} onDeleteLesson={onDeleteLesson} onScheduleEntry={onScheduleEntry} />
     {expanded && <div className="expanded-week-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeExpanded(); }}>
       <section className="expanded-week-dialog" role="dialog" aria-modal="true" aria-labelledby="expanded-week-title" onKeyDown={trapDialogFocus}>
         <header>
@@ -920,24 +1002,25 @@ function WeekCalendar({ selectedDate, lessons, scheduleEntries, students, onSele
         </header>
         <div className="expanded-week-tools">
           <button type="button" className="week-return-button week-toolbar-return" onClick={closeExpanded}><ArrowLeft size={16} aria-hidden="true" />收起为简略版</button>
-          <p className="expanded-week-hint"><Maximize2 size={14} aria-hidden="true" />左右滑动查看整周；实色色块是课程，切角虚线块是待办或提醒。</p>
+          <p className="expanded-week-hint"><Maximize2 size={14} aria-hidden="true" />左右滑动查看整周；点击课程编辑，长按课程删除。</p>
           <div className="week-scroll-controls"><button type="button" className="icon-button" onClick={() => scrollExpanded(-1)} aria-label="向左查看课表"><ChevronLeft size={18} aria-hidden="true" /></button><button type="button" className="icon-button" onClick={() => scrollExpanded(1)} aria-label="向右查看课表"><ChevronRight size={18} aria-hidden="true" /></button></div>
         </div>
         <div className="expanded-week-scroll" ref={expandedScrollRef} tabIndex={0}>
-          <WeekTimeline days={days} lessons={lessons} scheduleEntries={scheduleEntries} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={(lesson) => { setExpanded(false); onLesson(lesson); }} onScheduleEntry={(entry) => { setExpanded(false); onScheduleEntry(entry); }} />
+          <WeekTimeline days={days} lessons={lessons} scheduleEntries={scheduleEntries} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={(lesson) => { setExpanded(false); onLesson(lesson); }} onDeleteLesson={onDeleteLesson} onScheduleEntry={(entry) => { setExpanded(false); onScheduleEntry(entry); }} />
         </div>
       </section>
     </div>}
   </>;
 }
 
-function WeekTimeline({ compact = false, days, lessons, scheduleEntries, students, selectedDate, onSelectDate, onLesson, onScheduleEntry }: { compact?: boolean; days: { label: string; date: string }[]; lessons: Lesson[]; scheduleEntries: ScheduleEntry[]; students: Record<string, Student>; selectedDate: string; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void; onScheduleEntry: (entry: ScheduleEntry) => void }) {
+function WeekTimeline({ compact = false, days, lessons, scheduleEntries, students, selectedDate, onSelectDate, onLesson, onDeleteLesson, onScheduleEntry }: { compact?: boolean; days: { label: string; date: string }[]; lessons: Lesson[]; scheduleEntries: ScheduleEntry[]; students: Record<string, Student>; selectedDate: string; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void; onDeleteLesson: (lesson: Lesson) => void; onScheduleEntry: (entry: ScheduleEntry) => void }) {
   const startHour = 8;
   const endHour = 22;
   const rowHeight = compact ? 32 : 64;
   const totalHeight = (endHour - startHour) * rowHeight;
   const hourLines = Array.from({ length: endHour - startHour + 1 }, (_, index) => index + startHour);
   const timeLabels = compact ? hourLines.filter((hour) => (hour - startHour) % 2 === 0) : hourLines;
+  const lessonPress = useLongPress(onLesson, onDeleteLesson);
 
   return <div className={`week-timeline ${compact ? 'compact' : 'full'}`} aria-label={compact ? '简略周课表，纵轴时间，横轴星期' : '完整周课表，纵轴时间，横轴星期'}>
     <div className="week-timeline-header">
@@ -959,7 +1042,7 @@ function WeekTimeline({ compact = false, days, lessons, scheduleEntries, student
             const color = studentColor(student);
             const compactName = student?.nickname?.slice(0, 3) || student?.name?.slice(-2) || '学生';
             if (top >= totalHeight || height <= 0) return null;
-            return <button type="button" className={`week-timeline-lesson ${compact ? 'compact-lesson' : 'full-lesson'} ${lesson.duration < 75 ? 'short-lesson' : ''}`} key={lesson.id} style={{ top, height, backgroundColor: color, borderColor: colorWash(color, 0.72), color: contrastText(color) }} onClick={() => onLesson(lesson)} aria-label={`${day.date} ${lesson.startTime}到${lesson.endTime}，${student?.nickname || student?.name}，${lesson.subject}${student?.locationShort ? `，${student.locationShort}` : ''}`}>
+            return <button type="button" className={`week-timeline-lesson long-pressable ${compact ? 'compact-lesson' : 'full-lesson'} ${lesson.duration < 75 ? 'short-lesson' : ''}`} key={lesson.id} style={{ top, height, backgroundColor: color, borderColor: colorWash(color, 0.72), color: contrastText(color) }} {...lessonPress(lesson)} aria-label={`${day.date} ${lesson.startTime}到${lesson.endTime}，${student?.nickname || student?.name}，${lesson.subject}${student?.locationShort ? `，${student.locationShort}` : ''}；点击编辑，长按删除`}>
               {compact ? <><span>{lesson.startTime}</span><strong>{compactName}</strong><small>{lesson.subject.slice(0, 1)}</small></> : <><strong>{lesson.startTime}–{lesson.endTime}</strong><span>{student?.nickname || student?.name}</span><small>{lesson.subject}{student?.locationShort ? ` · ${student.locationShort}` : ''}</small></>}
             </button>;
           })}
@@ -1047,19 +1130,20 @@ function ScheduleEntryEditor({ draft, isNew, onChange, onClose, onSave, onDelete
             <button type="button" className={draft.kind === 'todo' ? 'selected' : ''} aria-pressed={draft.kind === 'todo'} onClick={() => onChange({ ...draft, kind: 'todo' })}><ListTodo size={16} aria-hidden="true" />非课程待办</button>
             <button type="button" className={draft.kind === 'reminder' ? 'selected' : ''} aria-pressed={draft.kind === 'reminder'} onClick={() => onChange({ ...draft, kind: 'reminder' })}><BellRing size={16} aria-hidden="true" />固定时间提醒</button>
           </div>
-          <label className="field"><span>标题</span><input value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} placeholder={draft.kind === 'todo' ? '例如：整理错题卡' : '例如：提前出发去学生家'} autoFocus /></label>
-          <label className="field"><span>补充说明</span><textarea value={draft.notes} onChange={(event) => onChange({ ...draft, notes: event.target.value })} placeholder="所需材料、地点、需要联系的人……" /></label>
+          <p className="required-legend"><b aria-hidden="true">*</b> 为必填项，补充说明可稍后填写</p>
+          <label className="field"><FieldLabel required>标题</FieldLabel><input required value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} placeholder={draft.kind === 'todo' ? '例如：整理错题卡' : '例如：提前出发去学生家'} autoFocus /></label>
+          <label className="field"><FieldLabel>补充说明</FieldLabel><textarea value={draft.notes} onChange={(event) => onChange({ ...draft, notes: event.target.value })} placeholder="所需材料、地点、需要联系的人……" /></label>
         </section>
 
         <section className="form-section">
           <div className="form-section-heading"><span><CalendarRange size={18} /></span><div><strong>日期与重复</strong><small>可保存一次，也可按周循环</small></div></div>
           <div className="schedule-mode-switch" role="group" aria-label="安排重复方式"><button type="button" className={!isWeekly ? 'selected' : ''} aria-pressed={!isWeekly} onClick={() => setScheduleMode('single')}>单次安排</button><button type="button" className={isWeekly ? 'selected' : ''} aria-pressed={isWeekly} onClick={() => setScheduleMode('weekly')}><Repeat2 size={15} aria-hidden="true" />按周循环</button></div>
-          {!isWeekly ? <label className="field first-field"><span>日期</span><input type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value, repeatStart: event.target.value, repeatEnd: event.target.value, repeatWeekdays: [weekdayNumber(event.target.value)] })} /></label> : <>
-            <div className="date-range-grid"><label><span>开始日期</span><input type="date" value={draft.repeatStart || draft.date} onChange={(event) => onChange({ ...draft, repeatStart: event.target.value, date: event.target.value })} /></label><i>至</i><label><span>结束日期</span><input type="date" value={draft.repeatEnd || draft.date} onChange={(event) => onChange({ ...draft, repeatEnd: event.target.value })} /></label></div>
-            <fieldset className="weekday-picker"><legend>每周重复</legend><div>{weekDays.map((day, index) => { const value = index + 1; const selected = (draft.repeatWeekdays || []).includes(value); return <button type="button" key={day} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onChange({ ...draft, repeatWeekdays: selected ? (draft.repeatWeekdays || []).filter((item) => item !== value) : [...(draft.repeatWeekdays || []), value].sort() })}>周{day}<Check size={11} aria-hidden="true" /></button>; })}</div></fieldset>
+          {!isWeekly ? <label className="field first-field"><FieldLabel required>日期</FieldLabel><input required type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value, repeatStart: event.target.value, repeatEnd: event.target.value, repeatWeekdays: [weekdayNumber(event.target.value)] })} /></label> : <>
+            <div className="date-range-grid"><label><FieldLabel required>开始日期</FieldLabel><input required type="date" value={draft.repeatStart || draft.date} onChange={(event) => onChange({ ...draft, repeatStart: event.target.value, date: event.target.value })} /></label><i>至</i><label><FieldLabel required>结束日期</FieldLabel><input required type="date" value={draft.repeatEnd || draft.date} onChange={(event) => onChange({ ...draft, repeatEnd: event.target.value })} /></label></div>
+            <fieldset className="weekday-picker" aria-required="true"><legend><FieldLabel required>每周重复</FieldLabel></legend><div>{weekDays.map((day, index) => { const value = index + 1; const selected = (draft.repeatWeekdays || []).includes(value); return <button type="button" key={day} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onChange({ ...draft, repeatWeekdays: selected ? (draft.repeatWeekdays || []).filter((item) => item !== value) : [...(draft.repeatWeekdays || []), value].sort() })}>周{day}<Check size={11} aria-hidden="true" /></button>; })}</div></fieldset>
             <p className="repeat-summary"><Repeat2 size={14} aria-hidden="true" />当前将生成 <strong>{repeatDates.length}</strong> 项固定安排</p>
           </>}
-          <div className="form-grid two time-grid"><label><span>开始时间</span><input type="time" value={draft.startTime} onChange={(event) => onChange({ ...draft, startTime: event.target.value, duration: durationFromTimes(event.target.value, draft.endTime, draft.duration) })} /></label><label><span>结束时间</span><input type="time" value={draft.endTime} onChange={(event) => onChange({ ...draft, endTime: event.target.value, duration: durationFromTimes(draft.startTime, event.target.value, draft.duration) })} /></label></div>
+          <div className="form-grid two time-grid"><label><FieldLabel required>开始时间</FieldLabel><input required type="time" value={draft.startTime} onChange={(event) => onChange({ ...draft, startTime: event.target.value, duration: durationFromTimes(event.target.value, draft.endTime, draft.duration) })} /></label><label><FieldLabel required>结束时间</FieldLabel><input required type="time" value={draft.endTime} onChange={(event) => onChange({ ...draft, endTime: event.target.value, duration: durationFromTimes(draft.startTime, event.target.value, draft.duration) })} /></label></div>
           {invalidTime && <p className="schedule-error" role="alert">结束时间需要晚于开始时间。</p>}
         </section>
 
@@ -1109,6 +1193,11 @@ function LessonEditor({ draft, students, isNew, onChange, onClose, onSave, onDel
     });
   }
   function submitLesson(complete = false) {
+    if (!draft.studentId) { setScheduleError('请选择学生。'); return; }
+    if (!draft.startTime || !draft.endTime) { setScheduleError('请填写完整的上课时间。'); return; }
+    if (draft.endTime <= draft.startTime) { setScheduleError('结束时间需要晚于开始时间。'); return; }
+    if (!Number.isFinite(draft.fee) || draft.fee < 0) { setScheduleError('请填写正确的课程价格。'); return; }
+    if (!isWeekly && !draft.date) { setScheduleError('请选择上课日期。'); return; }
     if (isWeekly) {
       const start = draft.repeatStart || '';
       const end = draft.repeatEnd || '';
@@ -1127,33 +1216,38 @@ function LessonEditor({ draft, students, isNew, onChange, onClose, onSave, onDel
       <header className="sheet-header"><div><p className="eyebrow">Lesson journal</p><h2 id="lesson-title">课程记录</h2></div><IconButton label="关闭" onClick={onClose}><X size={20} /></IconButton></header>
       <div className="sheet-content">
         <section className="form-section schedule-form-section">
-          <div className="form-section-heading"><span><CalendarDays size={17} aria-hidden="true" /></span><div><strong>排课设置</strong><small>单次记录或按星期批量生成</small></div></div>
+          <div className="form-section-heading"><span><CalendarDays size={17} aria-hidden="true" /></span><div><strong>核心排课</strong><small>学生、时间与价格优先填写</small></div></div>
+          <p className="required-legend"><b aria-hidden="true">*</b> 为必填项，其余内容可以课后再补充</p>
           <div className="schedule-mode-switch" role="group" aria-label="排课方式">
             <button type="button" className={!isWeekly ? 'selected' : ''} aria-pressed={!isWeekly} onClick={() => setScheduleMode('single')}><CalendarDays size={16} aria-hidden="true" />单次课程</button>
             <button type="button" className={isWeekly ? 'selected' : ''} aria-pressed={isWeekly} onClick={() => setScheduleMode('weekly')}><Repeat2 size={16} aria-hidden="true" />每周重复</button>
           </div>
-          <div className="form-grid two">
-            <label><span>学生</span><select value={draft.studentId} onChange={(event) => { const student = students.find((item) => item.id === event.target.value); onChange({ ...draft, studentId: event.target.value, fee: student?.defaultFee ?? draft.fee, duration: student?.defaultDuration ?? draft.duration, subject: student?.subjects[0] || draft.subject }); }}>{students.map((student) => <option key={student.id} value={student.id} disabled={isNew && tutoringStatusFor(student) === 'ended'}>{student.nickname || student.name}{tutoringStatusFor(student) === 'ended' ? '（已结课）' : ''}</option>)}</select></label>
-            <label><span>科目</span><select value={draft.subject} onChange={(event) => onChange({ ...draft, subject: event.target.value as Subject })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label>
-            <label><span>状态</span><select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as LessonStatus })}>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-            {!isWeekly && <label><span>上课日期</span><input type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value })} /></label>}
+          <label className="lesson-student-field"><FieldLabel required>学生</FieldLabel><select required value={draft.studentId} onChange={(event) => { const student = students.find((item) => item.id === event.target.value); onChange({ ...draft, studentId: event.target.value, fee: student?.defaultFee ?? draft.fee, duration: student?.defaultDuration ?? draft.duration, subject: student?.subjects[0] || draft.subject }); }}>{students.map((student) => <option key={student.id} value={student.id} disabled={isNew && tutoringStatusFor(student) === 'ended'}>{student.nickname || student.name}{tutoringStatusFor(student) === 'ended' ? '（已结课）' : ''}</option>)}</select></label>
+          <div className="lesson-priority-grid">
+            <fieldset className="priority-time-field">
+              <legend><FieldLabel required>上课时间</FieldLabel></legend>
+              <div><input required aria-label="开始时间" type="time" value={draft.startTime} onChange={(event) => { const startTime = event.target.value; onChange({ ...draft, startTime, duration: durationFromTimes(startTime, draft.endTime, draft.duration) }); }} /><i aria-hidden="true">至</i><input required aria-label="结束时间" type="time" value={draft.endTime} onChange={(event) => { const endTime = event.target.value; onChange({ ...draft, endTime, duration: durationFromTimes(draft.startTime, endTime, draft.duration) }); }} /></div>
+            </fieldset>
+            <label className="priority-fee-field"><FieldLabel required>价格</FieldLabel><div><span aria-hidden="true">¥</span><input required aria-label="本次收费（元）" type="number" inputMode="decimal" min="0" value={draft.fee} onChange={(event) => onChange({ ...draft, fee: Number(event.target.value) })} /></div></label>
           </div>
+          {!isWeekly && <label className="lesson-date-field"><FieldLabel required>上课日期</FieldLabel><input required type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value })} /></label>}
           {isWeekly && <>
             <div className="date-range-grid" aria-label="重复日期区间">
-              <label><span>开始日期</span><input type="date" value={draft.repeatStart || draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value, repeatStart: event.target.value })} /></label>
+              <label><FieldLabel required>开始日期</FieldLabel><input required type="date" value={draft.repeatStart || draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value, repeatStart: event.target.value })} /></label>
               <i aria-hidden="true">至</i>
-              <label><span>结束日期</span><input type="date" value={draft.repeatEnd || draft.date} onChange={(event) => onChange({ ...draft, repeatEnd: event.target.value })} /></label>
+              <label><FieldLabel required>结束日期</FieldLabel><input required type="date" value={draft.repeatEnd || draft.date} onChange={(event) => onChange({ ...draft, repeatEnd: event.target.value })} /></label>
             </div>
-            <fieldset className="weekday-picker"><legend>每周上课日</legend><div>{weekDays.map((day, index) => {
+            <fieldset className="weekday-picker" aria-required="true"><legend><FieldLabel required>每周上课日</FieldLabel></legend><div>{weekDays.map((day, index) => {
               const value = index + 1;
               const selected = (draft.repeatWeekdays || []).includes(value);
               return <button type="button" key={day} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onChange({ ...draft, repeatWeekdays: selected ? (draft.repeatWeekdays || []).filter((item) => item !== value) : [...(draft.repeatWeekdays || []), value].sort() })}><small>周</small>{day}<Check size={13} aria-hidden="true" /></button>;
             })}</div></fieldset>
             <p className="repeat-summary"><Repeat2 size={14} aria-hidden="true" />授课周期内将生成 <strong>{repeatDates.length}</strong> 节课；超出开始或结课日期的课程会自动跳过。</p>
           </>}
-          <div className="form-grid two time-grid">
-            <label><span>开始时间</span><input type="time" value={draft.startTime} onChange={(event) => { const startTime = event.target.value; onChange({ ...draft, startTime, duration: durationFromTimes(startTime, draft.endTime, draft.duration) }); }} /></label>
-            <label><span>结束时间</span><input type="time" value={draft.endTime} onChange={(event) => { const endTime = event.target.value; onChange({ ...draft, endTime, duration: durationFromTimes(draft.startTime, endTime, draft.duration) }); }} /></label>
+          <div className="lesson-meta-grid">
+            <label><FieldLabel required>科目</FieldLabel><select required value={draft.subject} onChange={(event) => onChange({ ...draft, subject: event.target.value as Subject })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label>
+            <label><FieldLabel required>状态</FieldLabel><select required value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as LessonStatus })}>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label><FieldLabel>收款状态</FieldLabel><select value={draft.payment} onChange={(event) => onChange({ ...draft, payment: event.target.value as Payment })}><option>待收款</option><option>已收款</option></select></label>
           </div>
           {scheduleError && <p className="schedule-error" role="alert">{scheduleError}</p>}
         </section>
@@ -1167,19 +1261,13 @@ function LessonEditor({ draft, students, isNew, onChange, onClose, onSave, onDel
             <label className="mastery-record practice"><span><i />需要巩固什么</span><textarea value={legacyMasteryText(draft, '需要巩固')} onChange={(event) => updateMastery('needsPracticeWhat', event.target.value)} placeholder="例如：多条件应用题、单位换算…" /></label>
             <label className="mastery-record not-mastered"><span><i />还未掌握什么</span><textarea value={legacyMasteryText(draft, '未掌握')} onChange={(event) => updateMastery('notMasteredWhat', event.target.value)} placeholder="例如：不规则动词变化、题意判断…" /></label>
           </section>
-          <label className="field"><span>课堂表现</span><textarea value={draft.performance} onChange={(event) => onChange({ ...draft, performance: event.target.value })} placeholder="专注度、状态、课堂互动…" /></label>
-          <label className="field"><span>本次作业</span><textarea value={draft.homework} onChange={(event) => onChange({ ...draft, homework: event.target.value })} placeholder="需要完成的练习" /></label>
-          <label className="field"><span>下次继续</span><textarea value={draft.nextPlan} onChange={(event) => onChange({ ...draft, nextPlan: event.target.value })} placeholder="下节课打开就能看见的教学提醒" /></label>
-          <label className="field"><span>我的私人备注</span><textarea value={draft.privateNotes} onChange={(event) => onChange({ ...draft, privateNotes: event.target.value })} /></label>
-          <div className="photo-section"><div className="field-label"><span>课堂照片</span><small>自动压缩并保存在本机</small></div><div className="photo-grid">{draft.photos.map((photo, index) => <div className="photo-thumb" key={`${photo.slice(-12)}-${index}`}><img src={photo} alt={`课程附件 ${index + 1}`} /><button onClick={() => onChange({ ...draft, photos: draft.photos.filter((_, item) => item !== index) })} aria-label={`删除附件 ${index + 1}`}><X size={14} /></button></div>)}<button className="photo-add" onClick={() => fileRef.current?.click()}><Camera size={20} /><span>添加照片</span></button></div><input ref={fileRef} hidden type="file" multiple accept="image/*" onChange={(event) => addPhotos(event.target.files)} /></div>
-        </section>
-
-        <section className="form-section compact-form-section">
-          <div className="form-section-heading"><span><CircleDollarSign size={17} aria-hidden="true" /></span><div><strong>费用与收款</strong><small>重复课程会沿用同一收费设置</small></div></div>
-          <div className="form-grid two">
-            <label><span>本次收费（元）</span><input type="number" inputMode="decimal" min="0" value={draft.fee} onChange={(event) => onChange({ ...draft, fee: Number(event.target.value) })} /></label>
-            <label><span>收款状态</span><select value={draft.payment} onChange={(event) => onChange({ ...draft, payment: event.target.value as Payment })}><option>待收款</option><option>已收款</option></select></label>
+          <div className="lesson-note-grid">
+            <label><span>课堂表现</span><textarea value={draft.performance} onChange={(event) => onChange({ ...draft, performance: event.target.value })} placeholder="专注度、状态、课堂互动…" /></label>
+            <label><span>本次作业</span><textarea value={draft.homework} onChange={(event) => onChange({ ...draft, homework: event.target.value })} placeholder="需要完成的练习" /></label>
+            <label><span>下次继续</span><textarea value={draft.nextPlan} onChange={(event) => onChange({ ...draft, nextPlan: event.target.value })} placeholder="下节课打开就能看见的教学提醒" /></label>
+            <label><span>私人备注</span><textarea value={draft.privateNotes} onChange={(event) => onChange({ ...draft, privateNotes: event.target.value })} /></label>
           </div>
+          <div className="photo-section"><div className="field-label"><span>课堂照片</span><small>自动压缩并保存在本机</small></div><div className="photo-grid">{draft.photos.map((photo, index) => <div className="photo-thumb" key={`${photo.slice(-12)}-${index}`}><img src={photo} alt={`课程附件 ${index + 1}`} /><button onClick={() => onChange({ ...draft, photos: draft.photos.filter((_, item) => item !== index) })} aria-label={`删除附件 ${index + 1}`}><X size={14} /></button></div>)}<button className="photo-add" onClick={() => fileRef.current?.click()}><Camera size={20} /><span>添加照片</span></button></div><input ref={fileRef} hidden type="file" multiple accept="image/*" onChange={(event) => addPhotos(event.target.files)} /></div>
         </section>
       </div>
       <footer className="sheet-footer">{!isNew && <button className="danger-button" onClick={onDelete} aria-label="删除课程"><Trash2 size={18} /></button>}{isWeekly ? <><button className="secondary-button grow" onClick={onClose}>取消</button><button className="primary-button grow" onClick={() => submitLesson(false)}><Repeat2 size={17} />生成课程</button></> : <><button className="secondary-button grow" onClick={() => submitLesson(false)}>保存</button><button className="primary-button grow" onClick={() => submitLesson(true)}><Check size={18} />完成课程</button></>}</footer>
@@ -1230,8 +1318,9 @@ function StudentEditor({ draft, onChange, onClose, onSave }: { draft: Student; o
     <div className="sheet-content">
       <section className="form-section">
         <div className="form-section-heading"><span><Users size={17} aria-hidden="true" /></span><div><strong>基本资料</strong><small>姓名、学校与默认课程设置</small></div></div>
+        <p className="required-legend"><b aria-hidden="true">*</b> 为必填项，其余档案可以之后补充</p>
         <div className="form-grid two">
-          <label><span>姓名 *</span><input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="学生姓名" /></label>
+          <label><FieldLabel required>姓名</FieldLabel><input required value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="学生姓名" /></label>
           <label><span>昵称</span><input value={draft.nickname} onChange={(event) => onChange({ ...draft, nickname: event.target.value })} placeholder="日常称呼" /></label>
           <label><span>年级</span><input value={draft.grade} onChange={(event) => onChange({ ...draft, grade: event.target.value })} /></label>
           <label><span>学校</span><input value={draft.school} onChange={(event) => onChange({ ...draft, school: event.target.value })} /></label>
