@@ -6,7 +6,7 @@ import gsap from 'gsap';
 import {
   ArrowLeft, BarChart3, BookOpen, CalendarDays, Camera, Check,
   CalendarRange, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, GraduationCap,
-  Filter, LockKeyhole, LockOpen, MapPin, Moon, Palette, Plus, Repeat2, Search, ShieldCheck, Sun, Trash2, Users, X,
+  Filter, LockKeyhole, LockOpen, MapPin, Maximize2, Moon, Palette, Plus, Repeat2, Search, ShieldCheck, Sun, Trash2, Users, X,
 } from 'lucide-react';
 
 type Subject = '语文' | '数学' | '英语';
@@ -539,21 +539,99 @@ function CalendarFilters({ students, selectedStudentIds, selectedSubjects, onStu
 function WeekCalendar({ selectedDate, lessons, students, onSelectDate, onLesson }: { selectedDate: string; lessons: Lesson[]; students: Record<string, Student>; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void }) {
   const start = weekStartFor(selectedDate);
   const days = weekDays.map((label, index) => ({ label, date: dateFrom(start, index) }));
+  const [expanded, setExpanded] = useState(false);
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const expandedScrollRef = useRef<HTMLDivElement>(null);
 
-  return <div className="week-agenda" aria-label="一周课程表">
-    {days.map((day) => {
-      const dayLessons = lessons.filter((lesson) => lesson.date === day.date).sort((a, b) => a.startTime.localeCompare(b.startTime));
-      return <section className={`week-agenda-row ${day.date === selectedDate ? 'selected-day' : ''}`} key={day.date}>
-        <button className="week-day-button" onClick={() => onSelectDate(day.date)} aria-pressed={day.date === selectedDate}><small>周{day.label}</small><strong>{Number(day.date.slice(-2))}</strong></button>
-        <div className="week-day-lessons">{dayLessons.length ? dayLessons.map((lesson) => {
-          const student = students[lesson.studentId];
-          const color = studentColor(student);
-          return <button className="week-agenda-lesson" key={lesson.id} style={{ borderLeftColor: color, backgroundColor: colorWash(color, 0.13) }} onClick={() => onLesson(lesson)} aria-label={`${day.date} ${lesson.startTime}到${lesson.endTime}，${student?.nickname || student?.name}，${lesson.subject}${student?.locationShort ? `，${student.locationShort}` : ''}`}>
-            <span className="week-agenda-time">{lesson.startTime}–{lesson.endTime}</span><strong>{student?.nickname || student?.name}</strong><span>{lesson.subject}{student?.locationShort ? ` · ${student.locationShort}` : ''}</span>
-          </button>;
-        }) : <span className="week-empty">无课</span>}</div>
-      </section>;
-    })}
+  useEffect(() => {
+    if (!expanded) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      window.setTimeout(() => expandButtonRef.current?.focus(), 0);
+    };
+  }, [expanded]);
+
+  function trapDialogFocus(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
+
+  function scrollExpanded(direction: -1 | 1) {
+    expandedScrollRef.current?.scrollBy({ left: direction * 300, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+
+  return <>
+    <div className="week-version-bar">
+      <div className="week-version-switch" role="group" aria-label="周课表详细程度">
+        <button type="button" className="selected" aria-pressed="true">简略版</button>
+        <button type="button" ref={expandButtonRef} aria-pressed="false" onClick={() => setExpanded(true)}><Maximize2 size={14} aria-hidden="true" />完整课表</button>
+      </div>
+      <small>色块位置对应上课时间</small>
+    </div>
+    <WeekTimeline compact days={days} lessons={lessons} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={onLesson} />
+    {expanded && <div className="expanded-week-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setExpanded(false); }}>
+      <section className="expanded-week-dialog" role="dialog" aria-modal="true" aria-labelledby="expanded-week-title" onKeyDown={trapDialogFocus}>
+        <header>
+          <div><p className="eyebrow">Full weekly schedule</p><h2 id="expanded-week-title">完整周课表</h2><span>{formatShortDate(days[0].date)}–{formatShortDate(days[6].date)} · 08:00–22:00</span></div>
+          <button ref={closeButtonRef} className="icon-button" onClick={() => setExpanded(false)} aria-label="关闭完整课表"><X size={20} aria-hidden="true" /></button>
+        </header>
+        <div className="expanded-week-tools"><p className="expanded-week-hint"><Maximize2 size={14} aria-hidden="true" />左右滑动或使用箭头查看整周；点击色块打开课程记录。</p><div><button type="button" className="icon-button" onClick={() => scrollExpanded(-1)} aria-label="向左查看课表"><ChevronLeft size={18} aria-hidden="true" /></button><button type="button" className="icon-button" onClick={() => scrollExpanded(1)} aria-label="向右查看课表"><ChevronRight size={18} aria-hidden="true" /></button></div></div>
+        <div className="expanded-week-scroll" ref={expandedScrollRef} tabIndex={0}>
+          <WeekTimeline days={days} lessons={lessons} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={(lesson) => { setExpanded(false); onLesson(lesson); }} />
+        </div>
+      </section>
+    </div>}
+  </>;
+}
+
+function WeekTimeline({ compact = false, days, lessons, students, selectedDate, onSelectDate, onLesson }: { compact?: boolean; days: { label: string; date: string }[]; lessons: Lesson[]; students: Record<string, Student>; selectedDate: string; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void }) {
+  const startHour = 8;
+  const endHour = 22;
+  const rowHeight = compact ? 20 : 64;
+  const totalHeight = (endHour - startHour) * rowHeight;
+  const hourLines = Array.from({ length: endHour - startHour + 1 }, (_, index) => index + startHour);
+  const timeLabels = compact ? hourLines.filter((hour) => (hour - startHour) % 2 === 0) : hourLines;
+
+  return <div className={`week-timeline ${compact ? 'compact' : 'full'}`} aria-label={compact ? '简略周课表，纵轴时间，横轴星期' : '完整周课表，纵轴时间，横轴星期'}>
+    <div className="week-timeline-header">
+      <span aria-hidden="true">时间</span>
+      {days.map((day) => <button type="button" key={day.date} className={day.date === selectedDate ? 'active' : ''} onClick={() => onSelectDate(day.date)} aria-pressed={day.date === selectedDate}><small>周{day.label}</small><strong>{Number(day.date.slice(-2))}</strong></button>)}
+    </div>
+    <div className="week-timeline-body" style={{ height: totalHeight }}>
+      <div className="week-time-axis" aria-hidden="true">{timeLabels.map((hour) => <span key={hour} style={{ top: (hour - startHour) * rowHeight }}>{String(hour).padStart(2, '0')}:00</span>)}</div>
+      <div className="week-timeline-columns">
+        {days.map((day) => <div className={`week-timeline-day ${day.date === selectedDate ? 'selected-day' : ''}`} key={day.date}>
+          {hourLines.map((hour) => <i className="week-hour-line" key={hour} style={{ top: (hour - startHour) * rowHeight }} />)}
+          {lessons.filter((lesson) => lesson.date === day.date).map((lesson) => {
+            const [hour, minute] = lesson.startTime.split(':').map(Number);
+            const startMinutes = (hour - startHour) * 60 + minute;
+            const top = Math.max(0, startMinutes / 60 * rowHeight);
+            const available = Math.max(0, totalHeight - top - 1);
+            const height = Math.min(available, Math.max(compact ? 20 : 42, lesson.duration / 60 * rowHeight - (compact ? 1 : 4)));
+            const student = students[lesson.studentId];
+            const color = studentColor(student);
+            const compactName = student?.nickname?.slice(0, 3) || student?.name?.slice(-2) || '学生';
+            if (top >= totalHeight || height <= 0) return null;
+            return <button type="button" className={`week-timeline-lesson ${compact ? 'compact-lesson' : 'full-lesson'} ${lesson.duration < 75 ? 'short-lesson' : ''}`} key={lesson.id} style={{ top, height, backgroundColor: color, borderColor: colorWash(color, 0.72), color: contrastText(color) }} onClick={() => onLesson(lesson)} aria-label={`${day.date} ${lesson.startTime}到${lesson.endTime}，${student?.nickname || student?.name}，${lesson.subject}${student?.locationShort ? `，${student.locationShort}` : ''}`}>
+              {compact ? <><span>{lesson.startTime}</span><strong>{compactName}</strong><small>{lesson.subject.slice(0, 1)}</small></> : <><strong>{lesson.startTime}–{lesson.endTime}</strong><span>{student?.nickname || student?.name}</span><small>{lesson.subject}{student?.locationShort ? ` · ${student.locationShort}` : ''}</small></>}
+            </button>;
+          })}
+        </div>)}
+      </div>
+    </div>
   </div>;
 }
 
