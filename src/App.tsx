@@ -6,7 +6,7 @@ import gsap from 'gsap';
 import {
   ArrowLeft, BarChart3, BookOpen, CalendarDays, Camera, Check,
   CalendarRange, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, GraduationCap,
-  LockKeyhole, LockOpen, MapPin, Moon, Palette, Plus, Search, ShieldCheck, Sun, Trash2, Users, X,
+  Filter, LockKeyhole, LockOpen, MapPin, Moon, Palette, Plus, Repeat2, Search, ShieldCheck, Sun, Trash2, Users, X,
 } from 'lucide-react';
 
 type Subject = '语文' | '数学' | '英语';
@@ -16,6 +16,7 @@ type Payment = '已收款' | '待收款';
 type Tab = 'calendar' | 'students' | 'stats';
 type Range = '今天' | '本周' | '本月' | '本年' | '全部';
 type CalendarMode = 'month' | 'week';
+type ScheduleMode = 'single' | 'weekly';
 
 type Student = {
   id: string; name: string; nickname: string; grade: string; school: string;
@@ -31,6 +32,8 @@ type Lesson = {
   mastery: Mastery; masteryNotes: string; performance: string; homework: string;
   nextPlan: string; privateNotes: string; fee: number; payment: Payment; photos: string[];
   masteredWhat?: string; needsPracticeWhat?: string; notMasteredWhat?: string;
+  scheduleMode?: ScheduleMode; repeatStart?: string; repeatEnd?: string;
+  repeatWeekdays?: number[]; seriesId?: string;
 };
 
 const studentColorPalette = ['#7b6ba8', '#5f7f65', '#b16f4f', '#397c8f', '#a05c75', '#8a713e', '#526fa3', '#7b715f'];
@@ -106,6 +109,33 @@ function dateFrom(base: Date, offset: number) {
   return localDate(next.getFullYear(), next.getMonth(), next.getDate());
 }
 
+function weekdayNumber(value: string) {
+  const day = new Date(`${value}T12:00:00`).getDay();
+  return day === 0 ? 7 : day;
+}
+
+function recurringDates(start: string, end: string, weekdays: number[]) {
+  if (!start || !end || start > end || !weekdays.length) return [];
+  const cursor = new Date(`${start}T12:00:00`);
+  const last = new Date(`${end}T12:00:00`);
+  const dates: string[] = [];
+  let guard = 0;
+  while (cursor <= last && guard < 367) {
+    const value = localDate(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+    if (weekdays.includes(weekdayNumber(value))) dates.push(value);
+    cursor.setDate(cursor.getDate() + 1);
+    guard += 1;
+  }
+  return dates;
+}
+
+function durationFromTimes(startTime: string, endTime: string, fallback: number) {
+  const [startHour, startMinute] = startTime.split(':').map(Number);
+  const [endHour, endMinute] = endTime.split(':').map(Number);
+  const minutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
+  return minutes > 0 ? minutes : fallback;
+}
+
 function legacyMasteryText(lesson: Lesson, level: Mastery) {
   if (level === '已掌握') return lesson.masteredWhat ?? (lesson.mastery === level ? lesson.masteryNotes : '');
   if (level === '需要巩固') return lesson.needsPracticeWhat ?? (lesson.mastery === level ? lesson.masteryNotes : '');
@@ -148,7 +178,8 @@ function emptyLesson(student: Student, date: string): Lesson {
     duration: student.defaultDuration, subject: student.subjects[0] || '数学', status: '已预约',
     teachingContent: '', mastery: '需要巩固', masteryNotes: '', performance: '', homework: '',
     nextPlan: '', privateNotes: '', fee: student.defaultFee, payment: '待收款', photos: [],
-    masteredWhat: '', needsPracticeWhat: '', notMasteredWhat: '',
+    masteredWhat: '', needsPracticeWhat: '', notMasteredWhat: '', scheduleMode: 'weekly',
+    repeatStart: date, repeatEnd: dateFrom(new Date(`${date}T12:00:00`), 28), repeatWeekdays: [weekdayNumber(date)],
   };
 }
 
@@ -174,6 +205,10 @@ export default function Home() {
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
+  const [savedToastMessage, setSavedToastMessage] = useState('已保存到本机');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
 
   useEffect(() => {
     try {
@@ -220,7 +255,10 @@ export default function Home() {
   }, [tab, activeStudentId]);
 
   const studentMap = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student])), [students]);
-  const selectedLessons = lessons.filter((lesson) => lesson.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const calendarLessons = useMemo(() => lessons.filter((lesson) => lesson.status !== '已取消'
+    && (!selectedStudentIds.length || selectedStudentIds.includes(lesson.studentId))
+    && (!selectedSubjects.length || selectedSubjects.includes(lesson.subject))), [lessons, selectedStudentIds, selectedSubjects]);
+  const selectedLessons = calendarLessons.filter((lesson) => lesson.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const activeStudent = activeStudentId ? studentMap[activeStudentId] : null;
 
   const calendarCells = useMemo(() => {
@@ -278,7 +316,24 @@ export default function Home() {
   function saveLesson(complete = false) {
     if (!lessonDraft) return;
     const next = complete ? { ...lessonDraft, status: '已完成' as LessonStatus } : lessonDraft;
-    setLessons((items) => items.some((item) => item.id === next.id) ? items.map((item) => item.id === next.id ? next : item) : [...items, next]);
+    if (next.scheduleMode === 'weekly') {
+      const dates = recurringDates(next.repeatStart || next.date, next.repeatEnd || next.date, next.repeatWeekdays || []);
+      const seriesId = next.seriesId || `series-${Date.now()}`;
+      const generated = dates.map((date) => ({ ...next, id: `${seriesId}-${date}`, date, seriesId }));
+      const withoutDraft = lessons.filter((item) => item.id !== next.id);
+      const existingKeys = new Set(withoutDraft.map((item) => `${item.studentId}|${item.date}|${item.startTime}|${item.subject}`));
+      const unique = generated.filter((item) => {
+        const key = `${item.studentId}|${item.date}|${item.startTime}|${item.subject}`;
+        if (existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      });
+      setLessons([...withoutDraft, ...unique]);
+      setSavedToastMessage(unique.length ? `已生成 ${unique.length} 节重复课程` : '相同课程已存在，无需重复添加');
+    } else {
+      setLessons((items) => items.some((item) => item.id === next.id) ? items.map((item) => item.id === next.id ? next : item) : [...items, next]);
+      setSavedToastMessage('课程已保存到本机');
+    }
     setLessonDraft(null); setSavedToast(true); window.setTimeout(() => setSavedToast(false), 1800);
   }
 
@@ -295,7 +350,7 @@ export default function Home() {
   function saveStudent() {
     if (!studentDraft || !studentDraft.name.trim()) return;
     setStudents((items) => items.some((item) => item.id === studentDraft.id) ? items.map((item) => item.id === studentDraft.id ? studentDraft : item) : [...items, studentDraft]);
-    setStudentDraft(null); setSavedToast(true); window.setTimeout(() => setSavedToast(false), 1800);
+    setStudentDraft(null); setSavedToastMessage('学生档案已保存'); setSavedToast(true); window.setTimeout(() => setSavedToast(false), 1800);
   }
 
   function switchTab(next: Tab) { setTab(next); setActiveStudentId(null); }
@@ -304,7 +359,8 @@ export default function Home() {
     setStudents((items) => items.map((student) => student.id === id ? { ...student, ...changes } : student));
   }
 
-  const monthLessons = lessons.filter((lesson) => lesson.date.startsWith(`${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`) && lesson.status !== '已取消');
+  const monthLessons = calendarLessons.filter((lesson) => lesson.date.startsWith(`${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`));
+  const activeFilterCount = selectedStudentIds.length + selectedSubjects.length;
   const selectedWeekStart = weekStartFor(selectedDate);
   const selectedWeekEnd = dateFrom(selectedWeekStart, 6);
   const calendarTitle = calendarMode === 'month'
@@ -328,7 +384,7 @@ export default function Home() {
         <header className="topbar">
           <div>
             <p className="muted">晚上好，杨老师</p>
-            <h2>{tab === 'calendar' ? calendarTitle : tab === 'students' ? '我的学生' : '教学统计'}</h2>
+            <h2 className={tab === 'calendar' ? 'calendar-date-title' : ''}>{tab === 'calendar' ? calendarTitle : tab === 'students' ? '我的学生' : '教学统计'}</h2>
           </div>
           <div className="header-actions">
             <IconButton label={theme === 'light' ? '切换深色模式' : '切换浅色模式'} onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
@@ -345,6 +401,11 @@ export default function Home() {
                 <button className={calendarMode === 'month' ? 'active' : ''} onClick={() => setCalendarMode('month')} aria-pressed={calendarMode === 'month'}><CalendarDays size={15} aria-hidden="true" />月视图</button>
                 <button className={calendarMode === 'week' ? 'active' : ''} onClick={() => setCalendarMode('week')} aria-pressed={calendarMode === 'week'}><CalendarRange size={15} aria-hidden="true" />周课表</button>
               </div>
+              <div className="calendar-filter-bar">
+                <button className={`filter-trigger ${activeFilterCount ? 'active' : ''}`} onClick={() => setFilterOpen((value) => !value)} aria-expanded={filterOpen} aria-controls="calendar-filters"><Filter size={15} aria-hidden="true" />筛选{activeFilterCount ? <span>{activeFilterCount}</span> : null}</button>
+                <small>{activeFilterCount ? '当前仅显示已选课程' : '显示全部学生与科目'}</small>
+              </div>
+              {filterOpen && <CalendarFilters students={students} selectedStudentIds={selectedStudentIds} selectedSubjects={selectedSubjects} onStudentChange={setSelectedStudentIds} onSubjectChange={setSelectedSubjects} />}
               <div className="calendar-heading">
                 <button className="today-button" onClick={() => { setMonthCursor(new Date(2026, 7, 1)); setSelectedDate('2026-08-26'); }}>今天</button>
                 <p>{calendarMode === 'month' ? `${monthLessons.length} 节课 · ${(monthLessons.reduce((sum, item) => sum + item.duration, 0) / 60).toFixed(1)} 小时` : '08:00–22:00 · 点击课程直接记录'}</p>
@@ -357,7 +418,7 @@ export default function Home() {
                 <div className="calendar-grid weekday-row" aria-hidden="true">{weekDays.map((day) => <span key={day}>{day}</span>)}</div>
                 <div className="calendar-grid">
                   {calendarCells.map((cell) => {
-                    const dayLessons = lessons.filter((item) => item.date === cell.date && item.status !== '已取消');
+                    const dayLessons = calendarLessons.filter((item) => item.date === cell.date);
                     const dayStudents = [...new Map(dayLessons.map((lesson) => [lesson.studentId, studentMap[lesson.studentId]])).values()].filter(Boolean) as Student[];
                     const colors = dayStudents.map((student) => studentColor(student));
                     const tint = colors.length === 1
@@ -369,7 +430,7 @@ export default function Home() {
                     return <button key={cell.date} style={tint ? { background: tint } : undefined} onClick={() => setSelectedDate(cell.date)} className={`date-cell ${dayLessons.length ? 'has-lessons' : ''} ${cell.date === selectedDate ? 'active' : ''} ${!cell.current ? 'outside' : ''}`} aria-label={`${cell.date}${dayLessons.length ? `，${dayLessons.length}节课：${lessonNames}` : ''}`}><span>{cell.day}</span>{colors.length > 0 && <i className="student-color-dots" aria-hidden="true">{colors.slice(0, 3).map((color, index) => <b key={`${color}-${index}`} style={{ backgroundColor: color }} />)}</i>}</button>;
                   })}
                 </div>
-              </> : <WeekCalendar selectedDate={selectedDate} lessons={lessons} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson })} />}
+              </> : <WeekCalendar selectedDate={selectedDate} lessons={calendarLessons} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} />}
             </section>
 
             <section className="schedule-section">
@@ -379,7 +440,7 @@ export default function Home() {
               </div>
               {selectedLessons.length ? selectedLessons.map((lesson) => {
                 const student = studentMap[lesson.studentId];
-                return <button className="lesson-card" style={{ borderLeftColor: studentColor(student) }} key={lesson.id} onClick={() => setLessonDraft({ ...lesson })}>
+                  return <button className="lesson-card" style={{ borderLeftColor: studentColor(student) }} key={lesson.id} onClick={() => setLessonDraft({ ...lesson, scheduleMode: 'single' })}>
                   <div className="time-block"><strong>{lesson.startTime}</strong><span>{lesson.duration} 分钟</span></div>
                   <div className="lesson-line" />
                   <div className="lesson-info"><div className="avatar" style={avatarStyle(student)}>{student?.nickname?.[0] || student?.name?.[0]}</div><div><strong>{student?.nickname || student?.name} · {lesson.subject}</strong><p className="lesson-location"><MapPin size={12} aria-hidden="true" />{student?.locationShort || '地点待填写'}</p><p>{lesson.teachingContent || '等待填写课后记录'}</p></div></div>
@@ -393,7 +454,7 @@ export default function Home() {
 
         {tab === 'students' && (
           <div className="view-content">
-            {activeStudent ? <StudentDetail student={activeStudent} lessons={lessons.filter((item) => item.studentId === activeStudent.id)} onBack={() => setActiveStudentId(null)} onLesson={(lesson) => setLessonDraft({ ...lesson })} onEdit={() => setStudentDraft({ ...activeStudent })} archiveUnlocked={archiveUnlocked} onRequestUnlock={() => setPinDialogOpen(true)} onLock={() => setArchiveUnlocked(false)} onArchiveChange={(changes) => updateStudentArchive(activeStudent.id, changes)} /> : <>
+            {activeStudent ? <StudentDetail student={activeStudent} lessons={lessons.filter((item) => item.studentId === activeStudent.id)} onBack={() => setActiveStudentId(null)} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} onEdit={() => setStudentDraft({ ...activeStudent })} archiveUnlocked={archiveUnlocked} onRequestUnlock={() => setPinDialogOpen(true)} onLock={() => setArchiveUnlocked(false)} onArchiveChange={(changes) => updateStudentArchive(activeStudent.id, changes)} /> : <>
               <label className="search-field"><Search size={18} aria-hidden="true" /><span className="sr-only">搜索学生</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学生姓名" /></label>
               <div className="student-list">
                 {students.filter((student) => `${student.name}${student.nickname}`.toLowerCase().includes(query.toLowerCase())).map((student) => {
@@ -446,47 +507,53 @@ export default function Home() {
           <button className={tab === 'stats' ? 'selected' : ''} onClick={() => switchTab('stats')} aria-current={tab === 'stats' ? 'page' : undefined}><BarChart3 size={20} />统计</button>
         </nav>
 
-        {lessonDraft && <LessonEditor draft={lessonDraft} students={students} onChange={setLessonDraft} onClose={() => setLessonDraft(null)} onSave={saveLesson} onDelete={() => deleteLesson(lessonDraft.id)} />}
+        {lessonDraft && <LessonEditor draft={lessonDraft} students={students} isNew={!lessons.some((lesson) => lesson.id === lessonDraft.id)} onChange={setLessonDraft} onClose={() => setLessonDraft(null)} onSave={saveLesson} onDelete={() => deleteLesson(lessonDraft.id)} />}
         {studentDraft && <StudentEditor draft={studentDraft} onChange={setStudentDraft} onClose={() => setStudentDraft(null)} onSave={saveStudent} />}
         {pinDialogOpen && <ArchivePinDialog onClose={() => setPinDialogOpen(false)} onUnlock={() => { setArchiveUnlocked(true); setPinDialogOpen(false); }} />}
-        {savedToast && <div className="toast" role="status"><Check size={17} /> 已保存到本机</div>}
+        {savedToast && <div className="toast" role="status"><Check size={17} /> {savedToastMessage}</div>}
       </section>
     </main>
   );
 }
 
+function CalendarFilters({ students, selectedStudentIds, selectedSubjects, onStudentChange, onSubjectChange }: { students: Student[]; selectedStudentIds: string[]; selectedSubjects: Subject[]; onStudentChange: (ids: string[]) => void; onSubjectChange: (subjects: Subject[]) => void }) {
+  return <section className="calendar-filters" id="calendar-filters" aria-label="课表筛选">
+    <div className="filter-group">
+      <div className="filter-group-heading"><strong>学生</strong><button type="button" onClick={() => onStudentChange([])} aria-pressed={!selectedStudentIds.length}>全部学生</button></div>
+      <div className="filter-chips">{students.map((student) => {
+        const selected = selectedStudentIds.includes(student.id);
+        return <button type="button" key={student.id} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onStudentChange(selected ? selectedStudentIds.filter((id) => id !== student.id) : [...selectedStudentIds, student.id])}><i style={{ backgroundColor: studentColor(student) }} aria-hidden="true" />{student.nickname || student.name}<Check size={13} aria-hidden="true" /></button>;
+      })}</div>
+    </div>
+    <div className="filter-group">
+      <div className="filter-group-heading"><strong>科目</strong><button type="button" onClick={() => onSubjectChange([])} aria-pressed={!selectedSubjects.length}>全部科目</button></div>
+      <div className="filter-chips subject-filter-chips">{subjects.map((subject) => {
+        const selected = selectedSubjects.includes(subject);
+        return <button type="button" key={subject} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onSubjectChange(selected ? selectedSubjects.filter((item) => item !== subject) : [...selectedSubjects, subject])}>{subject}<Check size={13} aria-hidden="true" /></button>;
+      })}</div>
+    </div>
+    <p>可多选；未勾选某一分类时，该分类默认显示全部。</p>
+  </section>;
+}
+
 function WeekCalendar({ selectedDate, lessons, students, onSelectDate, onLesson }: { selectedDate: string; lessons: Lesson[]; students: Record<string, Student>; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void }) {
   const start = weekStartFor(selectedDate);
   const days = weekDays.map((label, index) => ({ label, date: dateFrom(start, index) }));
-  const hours = Array.from({ length: 15 }, (_, index) => index + 8);
-  const rowHeight = 56;
-  const totalHeight = hours.length * rowHeight;
 
-  return <div className="week-schedule-scroll" tabIndex={0} aria-label="周课程表，可横向滚动查看整周">
-    <div className="week-schedule">
-      <div className="week-header">
-        <span aria-hidden="true">时间</span>
-        {days.map((day) => <button key={day.date} className={day.date === selectedDate ? 'active' : ''} onClick={() => onSelectDate(day.date)} aria-pressed={day.date === selectedDate}><small>周{day.label}</small><strong>{Number(day.date.slice(-2))}</strong></button>)}
-      </div>
-      <div className="week-body" style={{ height: totalHeight }}>
-        <div className="time-axis" aria-hidden="true">{hours.map((hour) => <span key={hour} style={{ top: (hour - 8) * rowHeight }}>{String(hour).padStart(2, '0')}:00</span>)}</div>
-        <div className="week-columns">
-          {days.map((day) => <div className={`week-day ${day.date === selectedDate ? 'selected-day' : ''}`} key={day.date}>
-            {hours.map((hour) => <i className="week-hour-line" key={hour} style={{ top: (hour - 8) * rowHeight }} />)}
-            {lessons.filter((lesson) => lesson.date === day.date && lesson.status !== '已取消').map((lesson) => {
-              const [hour, minute] = lesson.startTime.split(':').map(Number);
-              const top = Math.max(0, ((hour - 8) * 60 + minute) / 60 * rowHeight);
-              const height = Math.max(42, lesson.duration / 60 * rowHeight - 3);
-              const student = students[lesson.studentId];
-              const color = studentColor(student);
-              return <button className={`week-lesson ${lesson.status === '已完成' ? 'completed' : ''}`} key={lesson.id} style={{ top, height, backgroundColor: color, borderColor: colorWash(color, 0.7), color: contrastText(color) }} onClick={() => onLesson(lesson)} aria-label={`${day.date} ${lesson.startTime}到${lesson.endTime}，${student?.nickname || student?.name}，${lesson.subject}${student?.locationShort ? `，${student.locationShort}` : ''}`}>
-                <strong>{lesson.startTime}–{lesson.endTime}</strong><span>{student?.nickname || student?.name}</span><small>{lesson.subject}{student?.locationShort ? ` · ${student.locationShort}` : ''}</small>
-              </button>;
-            })}
-          </div>)}
-        </div>
-      </div>
-    </div>
+  return <div className="week-agenda" aria-label="一周课程表">
+    {days.map((day) => {
+      const dayLessons = lessons.filter((lesson) => lesson.date === day.date).sort((a, b) => a.startTime.localeCompare(b.startTime));
+      return <section className={`week-agenda-row ${day.date === selectedDate ? 'selected-day' : ''}`} key={day.date}>
+        <button className="week-day-button" onClick={() => onSelectDate(day.date)} aria-pressed={day.date === selectedDate}><small>周{day.label}</small><strong>{Number(day.date.slice(-2))}</strong></button>
+        <div className="week-day-lessons">{dayLessons.length ? dayLessons.map((lesson) => {
+          const student = students[lesson.studentId];
+          const color = studentColor(student);
+          return <button className="week-agenda-lesson" key={lesson.id} style={{ borderLeftColor: color, backgroundColor: colorWash(color, 0.13) }} onClick={() => onLesson(lesson)} aria-label={`${day.date} ${lesson.startTime}到${lesson.endTime}，${student?.nickname || student?.name}，${lesson.subject}${student?.locationShort ? `，${student.locationShort}` : ''}`}>
+            <span className="week-agenda-time">{lesson.startTime}–{lesson.endTime}</span><strong>{student?.nickname || student?.name}</strong><span>{lesson.subject}{student?.locationShort ? ` · ${student.locationShort}` : ''}</span>
+          </button>;
+        }) : <span className="week-empty">无课</span>}</div>
+      </section>;
+    })}
   </div>;
 }
 
@@ -534,8 +601,11 @@ function MasteryBadges({ lesson }: { lesson: Lesson }) {
   return entries.length ? <div className="mastery-badges">{entries.map((entry) => <span className={entry.className} key={entry.label}><b>{entry.label}</b>{entry.value}</span>)}</div> : <div className="mastery-badges"><span className="empty"><b>掌握记录</b>待补充</span></div>;
 }
 
-function LessonEditor({ draft, students, onChange, onClose, onSave, onDelete }: { draft: Lesson; students: Student[]; onChange: (lesson: Lesson) => void; onClose: () => void; onSave: (complete?: boolean) => void; onDelete: () => void }) {
+function LessonEditor({ draft, students, isNew, onChange, onClose, onSave, onDelete }: { draft: Lesson; students: Student[]; isNew: boolean; onChange: (lesson: Lesson) => void; onClose: () => void; onSave: (complete?: boolean) => void; onDelete: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [scheduleError, setScheduleError] = useState('');
+  const isWeekly = draft.scheduleMode === 'weekly';
+  const repeatDates = recurringDates(draft.repeatStart || draft.date, draft.repeatEnd || draft.date, draft.repeatWeekdays || []);
   async function addPhotos(files: FileList | null) {
     if (!files?.length) return;
     const encoded = await Promise.all(Array.from(files).slice(0, 4).map(compressPhoto));
@@ -553,35 +623,96 @@ function LessonEditor({ draft, students, onChange, onClose, onSave, onDelete }: 
     const mastery: Mastery = next.notMasteredWhat.trim() ? '未掌握' : next.needsPracticeWhat.trim() ? '需要巩固' : next.masteredWhat.trim() ? '已掌握' : draft.mastery;
     onChange({ ...next, mastery });
   }
+  function setScheduleMode(mode: ScheduleMode) {
+    setScheduleError('');
+    if (mode === 'single') {
+      onChange({ ...draft, scheduleMode: mode, date: draft.repeatStart || draft.date });
+      return;
+    }
+    const start = draft.repeatStart || draft.date;
+    onChange({
+      ...draft,
+      scheduleMode: mode,
+      repeatStart: start,
+      repeatEnd: draft.repeatEnd || dateFrom(new Date(`${start}T12:00:00`), 28),
+      repeatWeekdays: draft.repeatWeekdays?.length ? draft.repeatWeekdays : [weekdayNumber(start)],
+    });
+  }
+  function submitLesson(complete = false) {
+    if (isWeekly) {
+      const start = draft.repeatStart || '';
+      const end = draft.repeatEnd || '';
+      if (!start || !end) { setScheduleError('请选择重复排课的开始和结束日期。'); return; }
+      if (start > end) { setScheduleError('结束日期不能早于开始日期。'); return; }
+      if (!(draft.repeatWeekdays || []).length) { setScheduleError('请至少选择一个上课星期。'); return; }
+      if ((new Date(`${end}T12:00:00`).getTime() - new Date(`${start}T12:00:00`).getTime()) / 86400000 > 366) { setScheduleError('单次最多安排一年，请缩短日期区间。'); return; }
+      if (!repeatDates.length) { setScheduleError('当前区间内没有匹配的上课日期。'); return; }
+    }
+    setScheduleError('');
+    onSave(complete);
+  }
   return <div className="sheet-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="sheet" role="dialog" aria-modal="true" aria-labelledby="lesson-title">
       <div className="sheet-handle" />
       <header className="sheet-header"><div><p className="eyebrow">Lesson journal</p><h2 id="lesson-title">课程记录</h2></div><IconButton label="关闭" onClick={onClose}><X size={20} /></IconButton></header>
-      <div className="form-grid two">
-        <label><span>学生</span><select value={draft.studentId} onChange={(event) => { const student = students.find((item) => item.id === event.target.value); onChange({ ...draft, studentId: event.target.value, fee: student?.defaultFee ?? draft.fee, duration: student?.defaultDuration ?? draft.duration }); }}>{students.map((student) => <option key={student.id} value={student.id}>{student.nickname || student.name}</option>)}</select></label>
-        <label><span>科目</span><select value={draft.subject} onChange={(event) => onChange({ ...draft, subject: event.target.value as Subject })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label>
-        <label><span>日期</span><input type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value })} /></label>
-        <label><span>状态</span><select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as LessonStatus })}>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label><span>开始时间</span><input type="time" value={draft.startTime} onChange={(event) => onChange({ ...draft, startTime: event.target.value })} /></label>
-        <label><span>结束时间</span><input type="time" value={draft.endTime} onChange={(event) => onChange({ ...draft, endTime: event.target.value })} /></label>
+      <div className="sheet-content">
+        <section className="form-section schedule-form-section">
+          <div className="form-section-heading"><span><CalendarDays size={17} aria-hidden="true" /></span><div><strong>排课设置</strong><small>单次记录或按星期批量生成</small></div></div>
+          <div className="schedule-mode-switch" role="group" aria-label="排课方式">
+            <button type="button" className={!isWeekly ? 'selected' : ''} aria-pressed={!isWeekly} onClick={() => setScheduleMode('single')}><CalendarDays size={16} aria-hidden="true" />单次课程</button>
+            <button type="button" className={isWeekly ? 'selected' : ''} aria-pressed={isWeekly} onClick={() => setScheduleMode('weekly')}><Repeat2 size={16} aria-hidden="true" />每周重复</button>
+          </div>
+          <div className="form-grid two">
+            <label><span>学生</span><select value={draft.studentId} onChange={(event) => { const student = students.find((item) => item.id === event.target.value); onChange({ ...draft, studentId: event.target.value, fee: student?.defaultFee ?? draft.fee, duration: student?.defaultDuration ?? draft.duration, subject: student?.subjects[0] || draft.subject }); }}>{students.map((student) => <option key={student.id} value={student.id}>{student.nickname || student.name}</option>)}</select></label>
+            <label><span>科目</span><select value={draft.subject} onChange={(event) => onChange({ ...draft, subject: event.target.value as Subject })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label>
+            <label><span>状态</span><select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as LessonStatus })}>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+            {!isWeekly && <label><span>上课日期</span><input type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value })} /></label>}
+          </div>
+          {isWeekly && <>
+            <div className="date-range-grid" aria-label="重复日期区间">
+              <label><span>开始日期</span><input type="date" value={draft.repeatStart || draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value, repeatStart: event.target.value })} /></label>
+              <i aria-hidden="true">至</i>
+              <label><span>结束日期</span><input type="date" value={draft.repeatEnd || draft.date} onChange={(event) => onChange({ ...draft, repeatEnd: event.target.value })} /></label>
+            </div>
+            <fieldset className="weekday-picker"><legend>每周上课日</legend><div>{weekDays.map((day, index) => {
+              const value = index + 1;
+              const selected = (draft.repeatWeekdays || []).includes(value);
+              return <button type="button" key={day} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onChange({ ...draft, repeatWeekdays: selected ? (draft.repeatWeekdays || []).filter((item) => item !== value) : [...(draft.repeatWeekdays || []), value].sort() })}><small>周</small>{day}<Check size={13} aria-hidden="true" /></button>;
+            })}</div></fieldset>
+            <p className="repeat-summary"><Repeat2 size={14} aria-hidden="true" />当前设置将生成 <strong>{repeatDates.length}</strong> 节课，之后每节都可以单独修改。</p>
+          </>}
+          <div className="form-grid two time-grid">
+            <label><span>开始时间</span><input type="time" value={draft.startTime} onChange={(event) => { const startTime = event.target.value; onChange({ ...draft, startTime, duration: durationFromTimes(startTime, draft.endTime, draft.duration) }); }} /></label>
+            <label><span>结束时间</span><input type="time" value={draft.endTime} onChange={(event) => { const endTime = event.target.value; onChange({ ...draft, endTime, duration: durationFromTimes(draft.startTime, endTime, draft.duration) }); }} /></label>
+          </div>
+          {scheduleError && <p className="schedule-error" role="alert">{scheduleError}</p>}
+        </section>
+
+        <section className="form-section">
+          <div className="form-section-heading"><span><BookOpen size={17} aria-hidden="true" /></span><div><strong>课堂记录</strong><small>完成课程后再补充也可以</small></div></div>
+          <label className="field first-field"><span>今天教了什么</span><textarea value={draft.teachingContent} onChange={(event) => onChange({ ...draft, teachingContent: event.target.value })} placeholder="分数乘除法、应用题、错题订正…" /></label>
+          <section className="mastery-records" aria-labelledby="mastery-records-title">
+            <div className="mastery-records-heading"><div><span className="field-title" id="mastery-records-title">掌握情况</span><small>三栏可以同时填写</small></div></div>
+            <label className="mastery-record mastered"><span><i />已掌握了什么</span><textarea value={legacyMasteryText(draft, '已掌握')} onChange={(event) => updateMastery('masteredWhat', event.target.value)} placeholder="例如：分数乘法步骤、基础约分…" /></label>
+            <label className="mastery-record practice"><span><i />需要巩固什么</span><textarea value={legacyMasteryText(draft, '需要巩固')} onChange={(event) => updateMastery('needsPracticeWhat', event.target.value)} placeholder="例如：多条件应用题、单位换算…" /></label>
+            <label className="mastery-record not-mastered"><span><i />还未掌握什么</span><textarea value={legacyMasteryText(draft, '未掌握')} onChange={(event) => updateMastery('notMasteredWhat', event.target.value)} placeholder="例如：不规则动词变化、题意判断…" /></label>
+          </section>
+          <label className="field"><span>课堂表现</span><textarea value={draft.performance} onChange={(event) => onChange({ ...draft, performance: event.target.value })} placeholder="专注度、状态、课堂互动…" /></label>
+          <label className="field"><span>本次作业</span><textarea value={draft.homework} onChange={(event) => onChange({ ...draft, homework: event.target.value })} placeholder="需要完成的练习" /></label>
+          <label className="field"><span>下次继续</span><textarea value={draft.nextPlan} onChange={(event) => onChange({ ...draft, nextPlan: event.target.value })} placeholder="下节课打开就能看见的教学提醒" /></label>
+          <label className="field"><span>我的私人备注</span><textarea value={draft.privateNotes} onChange={(event) => onChange({ ...draft, privateNotes: event.target.value })} /></label>
+          <div className="photo-section"><div className="field-label"><span>课堂照片</span><small>自动压缩并保存在本机</small></div><div className="photo-grid">{draft.photos.map((photo, index) => <div className="photo-thumb" key={`${photo.slice(-12)}-${index}`}><img src={photo} alt={`课程附件 ${index + 1}`} /><button onClick={() => onChange({ ...draft, photos: draft.photos.filter((_, item) => item !== index) })} aria-label={`删除附件 ${index + 1}`}><X size={14} /></button></div>)}<button className="photo-add" onClick={() => fileRef.current?.click()}><Camera size={20} /><span>添加照片</span></button></div><input ref={fileRef} hidden type="file" multiple accept="image/*" onChange={(event) => addPhotos(event.target.files)} /></div>
+        </section>
+
+        <section className="form-section compact-form-section">
+          <div className="form-section-heading"><span><CircleDollarSign size={17} aria-hidden="true" /></span><div><strong>费用与收款</strong><small>重复课程会沿用同一收费设置</small></div></div>
+          <div className="form-grid two">
+            <label><span>本次收费（元）</span><input type="number" inputMode="decimal" min="0" value={draft.fee} onChange={(event) => onChange({ ...draft, fee: Number(event.target.value) })} /></label>
+            <label><span>收款状态</span><select value={draft.payment} onChange={(event) => onChange({ ...draft, payment: event.target.value as Payment })}><option>待收款</option><option>已收款</option></select></label>
+          </div>
+        </section>
       </div>
-      <label className="field"><span>今天教了什么</span><textarea value={draft.teachingContent} onChange={(event) => onChange({ ...draft, teachingContent: event.target.value })} placeholder="分数乘除法、应用题、错题订正…" /></label>
-      <section className="mastery-records" aria-labelledby="mastery-records-title">
-        <div className="mastery-records-heading"><div><span className="field-title" id="mastery-records-title">掌握情况</span><small>三栏可以同时填写，不再只能选一个状态</small></div></div>
-        <label className="mastery-record mastered"><span><i />已掌握了什么</span><textarea value={legacyMasteryText(draft, '已掌握')} onChange={(event) => updateMastery('masteredWhat', event.target.value)} placeholder="例如：分数乘法步骤、基础约分…" /></label>
-        <label className="mastery-record practice"><span><i />需要巩固什么</span><textarea value={legacyMasteryText(draft, '需要巩固')} onChange={(event) => updateMastery('needsPracticeWhat', event.target.value)} placeholder="例如：多条件应用题、单位换算…" /></label>
-        <label className="mastery-record not-mastered"><span><i />还未掌握什么</span><textarea value={legacyMasteryText(draft, '未掌握')} onChange={(event) => updateMastery('notMasteredWhat', event.target.value)} placeholder="例如：不规则动词变化、题意判断…" /></label>
-      </section>
-      <div className="form-grid two">
-        <label><span>本次收费（元）</span><input type="number" min="0" value={draft.fee} onChange={(event) => onChange({ ...draft, fee: Number(event.target.value) })} /></label>
-        <label><span>收款状态</span><select value={draft.payment} onChange={(event) => onChange({ ...draft, payment: event.target.value as Payment })}><option>待收款</option><option>已收款</option></select></label>
-      </div>
-      <label className="field"><span>课堂表现</span><textarea value={draft.performance} onChange={(event) => onChange({ ...draft, performance: event.target.value })} placeholder="专注度、状态、课堂互动…" /></label>
-      <label className="field"><span>本次作业</span><textarea value={draft.homework} onChange={(event) => onChange({ ...draft, homework: event.target.value })} placeholder="需要完成的练习" /></label>
-      <label className="field"><span>下次继续</span><textarea value={draft.nextPlan} onChange={(event) => onChange({ ...draft, nextPlan: event.target.value })} placeholder="下节课打开就能看见的教学提醒" /></label>
-      <label className="field"><span>我的私人备注</span><textarea value={draft.privateNotes} onChange={(event) => onChange({ ...draft, privateNotes: event.target.value })} /></label>
-      <div className="photo-section"><div className="field-label"><span>课堂照片</span><small>自动压缩并保存在本机</small></div><div className="photo-grid">{draft.photos.map((photo, index) => <div className="photo-thumb" key={`${photo.slice(-12)}-${index}`}><img src={photo} alt={`课程附件 ${index + 1}`} /><button onClick={() => onChange({ ...draft, photos: draft.photos.filter((_, item) => item !== index) })} aria-label={`删除附件 ${index + 1}`}><X size={14} /></button></div>)}<button className="photo-add" onClick={() => fileRef.current?.click()}><Camera size={20} /><span>添加照片</span></button></div><input ref={fileRef} hidden type="file" multiple accept="image/*" onChange={(event) => addPhotos(event.target.files)} /></div>
-      <footer className="sheet-footer"><button className="danger-button" onClick={onDelete} aria-label="删除课程"><Trash2 size={18} /></button><button className="secondary-button grow" onClick={() => onSave(false)}>保存</button><button className="primary-button grow" onClick={() => onSave(true)}><Check size={18} />完成课程</button></footer>
+      <footer className="sheet-footer">{!isNew && <button className="danger-button" onClick={onDelete} aria-label="删除课程"><Trash2 size={18} /></button>}{isWeekly ? <><button className="secondary-button grow" onClick={onClose}>取消</button><button className="primary-button grow" onClick={() => submitLesson(false)}><Repeat2 size={17} />生成课程</button></> : <><button className="secondary-button grow" onClick={() => submitLesson(false)}>保存</button><button className="primary-button grow" onClick={() => submitLesson(true)}><Check size={18} />完成课程</button></>}</footer>
     </section>
   </div>;
 }
@@ -626,22 +757,35 @@ function ArchivePinDialog({ onClose, onUnlock }: { onClose: () => void; onUnlock
 
 function StudentEditor({ draft, onChange, onClose, onSave }: { draft: Student; onChange: (student: Student) => void; onClose: () => void; onSave: () => void }) {
   return <div className="sheet-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="sheet compact-sheet" role="dialog" aria-modal="true" aria-labelledby="student-title"><div className="sheet-handle" /><header className="sheet-header"><div><p className="eyebrow">Student profile</p><h2 id="student-title">学生档案</h2></div><IconButton label="关闭" onClick={onClose}><X size={20} /></IconButton></header>
-    <div className="form-grid two">
-      <label><span>姓名 *</span><input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="学生姓名" /></label>
-      <label><span>昵称</span><input value={draft.nickname} onChange={(event) => onChange({ ...draft, nickname: event.target.value })} placeholder="日常称呼" /></label>
-      <label><span>年级</span><input value={draft.grade} onChange={(event) => onChange({ ...draft, grade: event.target.value })} /></label>
-      <label><span>学校</span><input value={draft.school} onChange={(event) => onChange({ ...draft, school: event.target.value })} /></label>
-      <label><span>家长姓名</span><input value={draft.parentName} onChange={(event) => onChange({ ...draft, parentName: event.target.value })} /></label>
-      <label><span>家长电话</span><input inputMode="tel" value={draft.parentPhone} onChange={(event) => onChange({ ...draft, parentPhone: event.target.value })} /></label>
-      <label><span>默认时长（分钟）</span><input type="number" min="0" value={draft.defaultDuration} onChange={(event) => onChange({ ...draft, defaultDuration: Number(event.target.value) })} /></label>
-      <label><span>默认课费（元）</span><input type="number" min="0" value={draft.defaultFee} onChange={(event) => onChange({ ...draft, defaultFee: Number(event.target.value) })} /></label>
-      <label><span>课表地点简称</span><input maxLength={10} value={draft.locationShort || ''} onChange={(event) => onChange({ ...draft, locationShort: event.target.value })} placeholder="如：徐家汇、学生家" /></label>
-      <label><span>单程通勤（分钟）</span><input type="number" inputMode="numeric" min="0" value={draft.commuteMinutes || ''} onChange={(event) => onChange({ ...draft, commuteMinutes: Number(event.target.value) })} placeholder="预计时间" /></label>
+    <div className="sheet-content">
+      <section className="form-section">
+        <div className="form-section-heading"><span><Users size={17} aria-hidden="true" /></span><div><strong>基本资料</strong><small>姓名、学校与默认课程设置</small></div></div>
+        <div className="form-grid two">
+          <label><span>姓名 *</span><input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="学生姓名" /></label>
+          <label><span>昵称</span><input value={draft.nickname} onChange={(event) => onChange({ ...draft, nickname: event.target.value })} placeholder="日常称呼" /></label>
+          <label><span>年级</span><input value={draft.grade} onChange={(event) => onChange({ ...draft, grade: event.target.value })} /></label>
+          <label><span>学校</span><input value={draft.school} onChange={(event) => onChange({ ...draft, school: event.target.value })} /></label>
+          <label><span>家长姓名</span><input value={draft.parentName} onChange={(event) => onChange({ ...draft, parentName: event.target.value })} /></label>
+          <label><span>家长电话</span><input inputMode="tel" value={draft.parentPhone} onChange={(event) => onChange({ ...draft, parentPhone: event.target.value })} /></label>
+          <label><span>默认时长（分钟）</span><input type="number" inputMode="numeric" min="0" value={draft.defaultDuration} onChange={(event) => onChange({ ...draft, defaultDuration: Number(event.target.value) })} /></label>
+          <label><span>默认课费（元）</span><input type="number" inputMode="decimal" min="0" value={draft.defaultFee} onChange={(event) => onChange({ ...draft, defaultFee: Number(event.target.value) })} /></label>
+        </div>
+      </section>
+      <section className="form-section">
+        <div className="form-section-heading"><span><MapPin size={17} aria-hidden="true" /></span><div><strong>上课地点</strong><small>课表只显示简称，详细地址留在档案内</small></div></div>
+        <div className="form-grid two">
+          <label><span>课表地点简称</span><input maxLength={10} value={draft.locationShort || ''} onChange={(event) => onChange({ ...draft, locationShort: event.target.value })} placeholder="如：徐家汇、学生家" /></label>
+          <label><span>单程通勤（分钟）</span><input type="number" inputMode="numeric" min="0" value={draft.commuteMinutes || ''} onChange={(event) => onChange({ ...draft, commuteMinutes: Number(event.target.value) })} placeholder="预计时间" /></label>
+        </div>
+        <label className="field"><span>详细地址</span><textarea value={draft.fullAddress || ''} onChange={(event) => onChange({ ...draft, fullAddress: event.target.value })} placeholder="仅在学生资料中展示，不显示在课表上" /></label>
+      </section>
+      <section className="form-section">
+        <div className="form-section-heading"><span><Palette size={17} aria-hidden="true" /></span><div><strong>课表识别</strong><small>设置学生颜色与所教学科</small></div></div>
+        <fieldset className="color-field first-field"><legend>学生专属颜色</legend><div className="color-picker-row"><div className="color-swatches" role="group" aria-label="常用颜色">{studentColorPalette.map((color) => <button type="button" key={color} className={(draft.color || studentColorPalette[0]) === color ? 'selected' : ''} style={{ backgroundColor: color, color: contrastText(color) }} onClick={() => onChange({ ...draft, color })} aria-label={`选择颜色 ${color}`} aria-pressed={(draft.color || studentColorPalette[0]) === color}><Check size={14} aria-hidden="true" /></button>)}</div><label className="custom-color"><Palette size={16} aria-hidden="true" /><span>自选</span><input type="color" value={draft.color || studentColorPalette[0]} onChange={(event) => onChange({ ...draft, color: event.target.value })} aria-label="自定义学生颜色" /></label></div><small>会用于头像、月历标记和周课表课程卡。</small></fieldset>
+        <fieldset className="subject-field"><legend>所教学科</legend><div>{subjects.map((subject) => <button type="button" key={subject} className={draft.subjects.includes(subject) ? 'selected' : ''} onClick={() => onChange({ ...draft, subjects: draft.subjects.includes(subject) ? draft.subjects.filter((item) => item !== subject) : [...draft.subjects, subject] })}>{subject}</button>)}</div></fieldset>
+        <label className="field"><span>教学提醒</span><textarea value={draft.notes} onChange={(event) => onChange({ ...draft, notes: event.target.value })} placeholder="长期关注点、学习习惯…" /></label>
+      </section>
     </div>
-    <label className="field"><span>详细地址</span><textarea value={draft.fullAddress || ''} onChange={(event) => onChange({ ...draft, fullAddress: event.target.value })} placeholder="仅在学生资料中展示，不显示在课表上" /></label>
-    <fieldset className="color-field"><legend>学生专属颜色</legend><div className="color-picker-row"><div className="color-swatches" role="group" aria-label="常用颜色">{studentColorPalette.map((color) => <button type="button" key={color} className={(draft.color || studentColorPalette[0]) === color ? 'selected' : ''} style={{ backgroundColor: color, color: contrastText(color) }} onClick={() => onChange({ ...draft, color })} aria-label={`选择颜色 ${color}`} aria-pressed={(draft.color || studentColorPalette[0]) === color}><Check size={14} aria-hidden="true" /></button>)}</div><label className="custom-color"><Palette size={16} aria-hidden="true" /><span>自选</span><input type="color" value={draft.color || studentColorPalette[0]} onChange={(event) => onChange({ ...draft, color: event.target.value })} aria-label="自定义学生颜色" /></label></div><small>会用于头像、月历标记和周课表课程块。</small></fieldset>
-    <fieldset className="subject-field"><legend>所教学科</legend><div>{subjects.map((subject) => <button type="button" key={subject} className={draft.subjects.includes(subject) ? 'selected' : ''} onClick={() => onChange({ ...draft, subjects: draft.subjects.includes(subject) ? draft.subjects.filter((item) => item !== subject) : [...draft.subjects, subject] })}>{subject}</button>)}</div></fieldset>
-    <label className="field"><span>教学提醒</span><textarea value={draft.notes} onChange={(event) => onChange({ ...draft, notes: event.target.value })} placeholder="长期关注点、学习习惯…" /></label>
     <footer className="sheet-footer"><button className="secondary-button grow" onClick={onClose}>取消</button><button className="primary-button grow" onClick={onSave}><Check size={18} />保存学生</button></footer>
   </section></div>;
 }
