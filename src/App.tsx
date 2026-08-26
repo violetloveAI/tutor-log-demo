@@ -4,9 +4,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import {
-  ArrowLeft, BarChart3, BookOpen, CalendarDays, Camera, Check,
+  ArrowLeft, BarChart3, BellRing, BookOpen, CalendarDays, Camera, Check,
   CalendarRange, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, GraduationCap,
-  Filter, LockKeyhole, LockOpen, MapPin, Maximize2, Moon, Palette, Plus, Repeat2, Search, ShieldCheck, Sun, Trash2, Users, X,
+  Filter, ListTodo, LockKeyhole, LockOpen, MapPin, Maximize2, Moon, Palette, Plus, Repeat2, Search, ShieldCheck, Sun, Trash2, Users, X,
 } from 'lucide-react';
 
 type Subject = '语文' | '数学' | '英语';
@@ -17,6 +17,7 @@ type Tab = 'calendar' | 'students' | 'stats';
 type Range = '今天' | '本周' | '本月' | '本年' | '全部';
 type CalendarMode = 'month' | 'week';
 type ScheduleMode = 'single' | 'weekly';
+type ScheduleEntryKind = 'todo' | 'reminder';
 
 type Student = {
   id: string; name: string; nickname: string; grade: string; school: string;
@@ -36,13 +37,35 @@ type Lesson = {
   repeatWeekdays?: number[]; seriesId?: string;
 };
 
+type ScheduleEntry = {
+  id: string; kind: ScheduleEntryKind; title: string; date: string;
+  startTime: string; endTime: string; duration: number; notes: string;
+  completed: boolean; scheduleMode?: ScheduleMode; repeatStart?: string;
+  repeatEnd?: string; repeatWeekdays?: number[]; seriesId?: string;
+};
+
 const studentColorPalette = ['#7b6ba8', '#5f7f65', '#b16f4f', '#397c8f', '#a05c75', '#8a713e', '#526fa3', '#7b715f'];
 
 const initialStudents: Student[] = [
-  { id: 'mia', name: '林知夏', nickname: 'Mia', grade: '五年级', school: '启明小学', parentName: '林女士', parentPhone: '演示号码', subjects: ['数学', '英语'], defaultDuration: 90, defaultFee: 300, notes: '应用题读题时容易漏条件。', locationShort: '徐家汇', fullAddress: '演示地址：徐汇区某小区', commuteMinutes: 35, color: studentColorPalette[0] },
-  { id: 'leo', name: '周予安', nickname: 'Leo', grade: '四年级', school: '实验小学', parentName: '周先生', parentPhone: '演示号码', subjects: ['语文', '英语'], defaultDuration: 60, defaultFee: 220, notes: '口语表达积极，书写需要更细心。', locationShort: '浦东', fullAddress: '演示地址：浦东新区某小区', commuteMinutes: 50, color: studentColorPalette[1] },
-  { id: 'emma', name: '陈嘉禾', nickname: 'Emma', grade: '六年级', school: '文澜小学', parentName: '陈女士', parentPhone: '演示号码', subjects: ['语文', '数学'], defaultDuration: 90, defaultFee: 280, notes: '小升初阶段，重点保持稳定节奏。', locationShort: '杨浦', fullAddress: '演示地址：杨浦区某小区', commuteMinutes: 42, color: studentColorPalette[2] },
+  { id: 'mia', name: '林知夏', nickname: 'Mia', grade: '五年级', school: '启明小学', parentName: '林女士', parentPhone: '演示号码', subjects: ['数学', '英语'], defaultDuration: 90, defaultFee: 300, notes: '应用题读题时容易漏条件。', locationShort: '徐家汇', fullAddress: '演示地址：徐汇区某小区', commuteMinutes: 35, color: studentColorPalette[0], teacherEvaluation: '理解速度快，遇到综合题容易急，需要练习把条件逐条圈出。', parentEvaluation: '沟通及时，比较关注学习方法。', archiveNotes: '阶段目标：开学前把分数应用题正确率稳定到 85%。' },
+  { id: 'leo', name: '周予安', nickname: 'Leo', grade: '四年级', school: '实验小学', parentName: '周先生', parentPhone: '演示号码', subjects: ['语文', '英语'], defaultDuration: 60, defaultFee: 220, notes: '口语表达积极，书写需要更细心。', locationShort: '浦东', fullAddress: '演示地址：浦东新区某小区', commuteMinutes: 50, color: studentColorPalette[1], teacherEvaluation: '口语参与度高，单词拼写需要建立错词本。', parentEvaluation: '更偏结果导向，需要每两周同步一次进展。', archiveNotes: '适合短任务、快反馈的课堂节奏。' },
+  { id: 'emma', name: '陈嘉禾', nickname: 'Emma', grade: '六年级', school: '文澜小学', parentName: '陈女士', parentPhone: '演示号码', subjects: ['语文', '数学'], defaultDuration: 90, defaultFee: 280, notes: '小升初阶段，重点保持稳定节奏。', locationShort: '杨浦', fullAddress: '演示地址：杨浦区某小区', commuteMinutes: 42, color: studentColorPalette[2], teacherEvaluation: '思路完整，表达有条理，作文素材积累不足。', parentEvaluation: '配合度高，会主动确认作业完成情况。', archiveNotes: '九月前完成两套小升初综合卷。' },
+  { id: 'nora', name: '沈星遥', nickname: 'Nora', grade: '三年级', school: '汇师小学', parentName: '沈女士', parentPhone: '演示号码', subjects: ['语文', '英语'], defaultDuration: 60, defaultFee: 240, notes: '阅读兴趣浓，朗读很有表现力。', locationShort: '静安寺', fullAddress: '演示地址：静安区某小区', commuteMinutes: 28, color: studentColorPalette[3], teacherEvaluation: '表达欲强，注意把答案写完整。', parentEvaluation: '沟通细致，时间安排稳定。', archiveNotes: '可多安排故事复述与看图写话。' },
+  { id: 'felix', name: '顾明川', nickname: 'Felix', grade: '初一', school: '市西初级中学', parentName: '顾先生', parentPhone: '演示号码', subjects: ['数学', '英语'], defaultDuration: 120, defaultFee: 420, notes: '基础不错，需要适应初中题量。', locationShort: '中山公园', fullAddress: '演示地址：长宁区某小区', commuteMinutes: 32, color: studentColorPalette[4], teacherEvaluation: '推理能力好，但步骤书写过于跳跃。', parentEvaluation: '尊重课堂节奏，希望每月收到一次复盘。', archiveNotes: '开学第一个月重点观察作业量和适应情况。' },
+  { id: 'yoyo', name: '唐语桐', nickname: 'Yoyo', grade: '二年级', school: '明珠小学', parentName: '唐女士', parentPhone: '演示号码', subjects: ['语文', '数学'], defaultDuration: 60, defaultFee: 200, notes: '低年级，以兴趣和习惯培养为主。', locationShort: '世纪公园', fullAddress: '演示地址：浦东新区某小区', commuteMinutes: 46, color: studentColorPalette[5], teacherEvaluation: '专注约 25 分钟，适合穿插卡片游戏。', parentEvaluation: '配合准备教具，反馈温和。', archiveNotes: '避免一次布置过多书面作业。' },
 ];
+
+function demoLesson(id: string, studentId: string, date: string, startTime: string, endTime: string, subject: Subject, teachingContent: string, fee: number, options: Partial<Lesson> = {}): Lesson {
+  const duration = durationFromTimes(startTime, endTime, 60);
+  return {
+    id, studentId, date, startTime, endTime, duration, subject,
+    status: '已完成', teachingContent, mastery: '需要巩固', masteryNotes: '',
+    performance: '课堂投入稳定，能跟随引导完成练习。', homework: '完成本次配套练习并标记疑问。',
+    nextPlan: '先检查作业，再进入下一知识点。', privateNotes: '', fee, payment: '已收款', photos: [],
+    masteredWhat: '基础概念与例题方法已经能够独立复述。', needsPracticeWhat: '综合题中需要继续练习审题和步骤表达。', notMasteredWhat: '',
+    ...options,
+  };
+}
 
 const initialLessons: Lesson[] = [
   { id: 'l1', studentId: 'mia', date: '2026-08-26', startTime: '16:00', endTime: '17:30', duration: 90, subject: '数学', status: '已完成', teachingContent: '分数应用题与错题订正', mastery: '需要巩固', masteryNotes: '基本方法已理解，复杂条件仍会漏读。', performance: '前半节专注，订正时能主动复盘。', homework: '练习册 P42，第 3–8 题', nextPlan: '继续练习分数应用题，复习约分。', privateNotes: '', fee: 300, payment: '已收款', photos: [] },
@@ -53,6 +76,34 @@ const initialLessons: Lesson[] = [
   { id: 'l6', studentId: 'emma', date: '2026-08-08', startTime: '14:00', endTime: '15:30', duration: 90, subject: '数学', status: '已完成', teachingContent: '圆柱体积综合题', mastery: '需要巩固', masteryNotes: '单位换算仍会出错。', performance: '愿意主动讲思路。', homework: '综合卷第 2 面', nextPlan: '集中复习单位换算。', privateNotes: '', fee: 280, payment: '已收款', photos: [] },
   { id: 'l7', studentId: 'mia', date: '2026-07-29', startTime: '16:00', endTime: '17:30', duration: 90, subject: '英语', status: '已完成', teachingContent: '一般过去时', mastery: '未掌握', masteryNotes: 'be 动词变化容易混淆。', performance: '需要更多口头练习。', homework: '完成时态对比练习', nextPlan: '复习 was / were。', privateNotes: '', fee: 280, payment: '已收款', photos: [] },
   { id: 'l8', studentId: 'mia', date: '2026-07-22', startTime: '16:00', endTime: '17:30', duration: 90, subject: '数学', status: '已完成', teachingContent: '小数除法复习', mastery: '已掌握', masteryNotes: '', performance: '稳定。', homework: '', nextPlan: '分数乘法。', privateNotes: '', fee: 280, payment: '已收款', photos: [] },
+  demoLesson('l9', 'nora', '2026-08-25', '17:00', '18:00', '语文', '看图写话：人物动作', 240, { payment: '待收款', masteredWhat: '能够按时间顺序描述画面。', needsPracticeWhat: '增加动作与表情细节。' }),
+  demoLesson('l10', 'felix', '2026-08-24', '18:30', '20:30', '数学', '有理数与数轴综合', 420, { masteredWhat: '正负数比较和数轴定位。', needsPracticeWhat: '分类讨论时避免漏情况。' }),
+  demoLesson('l11', 'yoyo', '2026-08-26', '09:30', '10:30', '语文', '绘本阅读与句子仿写', 200, { mastery: '已掌握', needsPracticeWhat: '', masteredWhat: '能够用“先……再……”完整表达。' }),
+  demoLesson('l12', 'emma', '2026-08-23', '14:00', '15:30', '数学', '百分数应用题', 280, { payment: '待收款' }),
+  demoLesson('l13', 'nora', '2026-08-20', '17:00', '18:00', '英语', '自然拼读：长元音', 240, { mastery: '已掌握', needsPracticeWhat: '', masteredWhat: 'a_e 与 i_e 发音规则。' }),
+  demoLesson('l14', 'felix', '2026-08-19', '18:30', '20:30', '英语', '一般现在时与频率副词', 420, { payment: '待收款', notMasteredWhat: '第三人称单数的否定句仍会混淆。' }),
+  demoLesson('l15', 'yoyo', '2026-08-17', '10:00', '11:00', '数学', '百以内加减法', 200, { mastery: '已掌握', needsPracticeWhat: '', masteredWhat: '进退位计算准确率达到 90%。' }),
+  demoLesson('l16', 'mia', '2026-08-15', '16:00', '17:30', '英语', '过去时态口语练习', 300),
+  demoLesson('l17', 'nora', '2026-08-13', '17:00', '18:00', '语文', '阅读理解：提取信息', 240),
+  demoLesson('l18', 'felix', '2026-08-10', '18:30', '20:30', '数学', '整式与代数式入门', 420, { mastery: '已掌握', needsPracticeWhat: '', masteredWhat: '能够区分单项式与多项式。' }),
+  demoLesson('l19', 'yoyo', '2026-08-09', '10:00', '11:00', '语文', '拼音复习与朗读', 200),
+  demoLesson('l20', 'mia', '2026-08-06', '16:00', '17:30', '数学', '分数乘法基础', 300),
+  demoLesson('l21', 'emma', '2026-08-05', '18:30', '20:00', '语文', '作文结构：总分总', 280, { payment: '待收款' }),
+  demoLesson('l22', 'leo', '2026-08-04', '19:00', '20:00', '英语', '过去式听写与句型', 220),
+  demoLesson('l23', 'nora', '2026-08-03', '17:00', '18:00', '英语', '自我介绍与课堂口语', 240),
+  demoLesson('l24', 'felix', '2026-07-27', '18:30', '20:30', '数学', '小升初衔接诊断', 420),
+  demoLesson('l25', 'yoyo', '2026-07-25', '10:00', '11:00', '数学', '计算习惯评估', 200),
+  demoLesson('l26', 'emma', '2026-06-28', '14:00', '15:30', '语文', '期末阅读专题', 280),
+  demoLesson('l27', 'leo', '2026-06-20', '19:00', '20:00', '英语', '期末语法复习', 220),
+];
+
+const initialScheduleEntries: ScheduleEntry[] = [
+  { id: 's1', kind: 'reminder', title: '出发去徐家汇', date: '2026-08-26', startTime: '15:10', endTime: '15:25', duration: 15, notes: '地铁预计 35 分钟，预留进小区时间。', completed: true },
+  { id: 's2', kind: 'todo', title: '整理 Leo 错词卡', date: '2026-08-26', startTime: '13:30', endTime: '14:00', duration: 30, notes: '打印过去式词卡 1–20。', completed: false },
+  { id: 's3', kind: 'reminder', title: '确认周末调课', date: '2026-08-27', startTime: '12:30', endTime: '12:45', duration: 15, notes: '分别和 Emma、Nora 家长确认。', completed: false },
+  { id: 's4', kind: 'todo', title: '月度收款核对', date: '2026-08-28', startTime: '10:00', endTime: '10:45', duration: 45, notes: '核对待收款课程并发出温和提醒。', completed: false },
+  { id: 's5', kind: 'reminder', title: '打印 Felix 诊断卷', date: '2026-08-24', startTime: '16:30', endTime: '16:45', duration: 15, notes: 'A4 双面，附答案页。', completed: true },
+  { id: 's6', kind: 'todo', title: '更新学生阶段评价', date: '2026-08-30', startTime: '20:30', endTime: '21:00', duration: 30, notes: '只写入已上锁的私人档案。', completed: false },
 ];
 
 const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
@@ -183,14 +234,26 @@ function emptyLesson(student: Student, date: string): Lesson {
   };
 }
 
+function emptyScheduleEntry(date: string): ScheduleEntry {
+  return {
+    id: `schedule-${Date.now()}`, kind: 'reminder', title: '', date,
+    startTime: '12:30', endTime: '13:00', duration: 30, notes: '', completed: false,
+    scheduleMode: 'single', repeatStart: date,
+    repeatEnd: dateFrom(new Date(`${date}T12:00:00`), 28),
+    repeatWeekdays: [weekdayNumber(date)],
+  };
+}
+
 function IconButton({ label, children, onClick, pressed }: { label: string; children: React.ReactNode; onClick?: () => void; pressed?: boolean }) {
   return <button className="icon-button" onClick={onClick} aria-label={label} aria-pressed={pressed}>{children}</button>;
 }
 
 export default function Home() {
   const rootRef = useRef<HTMLElement>(null);
+  const statsContentRef = useRef<HTMLDivElement>(null);
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [lessons, setLessons] = useState<Lesson[]>(initialLessons);
+  const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>(initialScheduleEntries);
   const [tab, setTab] = useState<Tab>('calendar');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('month');
   const [selectedDate, setSelectedDate] = useState('2026-08-26');
@@ -199,6 +262,7 @@ export default function Home() {
   const [query, setQuery] = useState('');
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
   const [lessonDraft, setLessonDraft] = useState<Lesson | null>(null);
+  const [scheduleDraft, setScheduleDraft] = useState<ScheduleEntry | null>(null);
   const [studentDraft, setStudentDraft] = useState<Student | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [archiveUnlocked, setArchiveUnlocked] = useState(false);
@@ -212,9 +276,9 @@ export default function Home() {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('tutor-log-demo-data-v1');
+      const stored = localStorage.getItem('tutor-log-demo-data-v2');
       if (stored) {
-        const parsed = JSON.parse(stored) as { students: Student[]; lessons: Lesson[] };
+        const parsed = JSON.parse(stored) as { students: Student[]; lessons: Lesson[]; scheduleEntries?: ScheduleEntry[] };
         if (parsed.students?.length) setStudents(parsed.students.map((student, index) => ({
           ...student,
           locationShort: student.locationShort || '',
@@ -228,6 +292,7 @@ export default function Home() {
           needsPracticeWhat: legacyMasteryText(lesson, '需要巩固'),
           notMasteredWhat: legacyMasteryText(lesson, '未掌握'),
         })));
+        if (parsed.scheduleEntries?.length) setScheduleEntries(parsed.scheduleEntries);
       }
       const storedTheme = localStorage.getItem('tutor-log-demo-theme') as 'light' | 'dark' | null;
       if (storedTheme) setTheme(storedTheme);
@@ -240,8 +305,8 @@ export default function Home() {
   }, [theme]);
 
   useEffect(() => {
-    if (ready) localStorage.setItem('tutor-log-demo-data-v1', JSON.stringify({ students, lessons }));
-  }, [students, lessons, ready]);
+    if (ready) localStorage.setItem('tutor-log-demo-data-v2', JSON.stringify({ students, lessons, scheduleEntries }));
+  }, [students, lessons, scheduleEntries, ready]);
 
   useEffect(() => {
     const mm = gsap.matchMedia();
@@ -252,13 +317,27 @@ export default function Home() {
       return () => context.revert();
     });
     return () => mm.revert();
-  }, [tab, activeStudentId]);
+  }, [tab, activeStudentId, calendarMode]);
+
+  useEffect(() => {
+    if (tab !== 'stats' || !statsContentRef.current) return;
+    const target = statsContentRef.current;
+    const bars = target.querySelectorAll('.sparkline i, .progress-track i, .mini-track i');
+    const mm = gsap.matchMedia();
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.killTweensOf([target, bars]);
+      gsap.fromTo(target, { autoAlpha: 0.72, y: 7 }, { autoAlpha: 1, y: 0, duration: 0.22, ease: 'power2.out', clearProps: 'all' });
+      gsap.fromTo(bars, { scaleY: 0.42, transformOrigin: 'bottom' }, { scaleY: 1, duration: 0.24, stagger: 0.028, ease: 'power2.out', clearProps: 'scaleY' });
+    });
+    return () => mm.revert();
+  }, [range, tab]);
 
   const studentMap = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student])), [students]);
   const calendarLessons = useMemo(() => lessons.filter((lesson) => lesson.status !== '已取消'
     && (!selectedStudentIds.length || selectedStudentIds.includes(lesson.studentId))
     && (!selectedSubjects.length || selectedSubjects.includes(lesson.subject))), [lessons, selectedStudentIds, selectedSubjects]);
   const selectedLessons = calendarLessons.filter((lesson) => lesson.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const selectedScheduleEntries = scheduleEntries.filter((entry) => entry.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const activeStudent = activeStudentId ? studentMap[activeStudentId] : null;
 
   const calendarCells = useMemo(() => {
@@ -313,6 +392,10 @@ export default function Home() {
     setLessonDraft(emptyLesson(students[0], selectedDate));
   }
 
+  function openNewScheduleEntry() {
+    setScheduleDraft(emptyScheduleEntry(selectedDate));
+  }
+
   function saveLesson(complete = false) {
     if (!lessonDraft) return;
     const next = complete ? { ...lessonDraft, status: '已完成' as LessonStatus } : lessonDraft;
@@ -343,6 +426,37 @@ export default function Home() {
     }
   }
 
+  function saveScheduleEntry() {
+    if (!scheduleDraft || !scheduleDraft.title.trim()) return;
+    const next = { ...scheduleDraft, duration: durationFromTimes(scheduleDraft.startTime, scheduleDraft.endTime, scheduleDraft.duration) };
+    if (next.scheduleMode === 'weekly') {
+      const dates = recurringDates(next.repeatStart || next.date, next.repeatEnd || next.date, next.repeatWeekdays || []);
+      const seriesId = next.seriesId || `schedule-series-${Date.now()}`;
+      const generated = dates.map((date) => ({ ...next, id: `${seriesId}-${date}`, date, seriesId }));
+      const withoutDraft = scheduleEntries.filter((item) => item.id !== next.id);
+      const existingKeys = new Set(withoutDraft.map((item) => `${item.title}|${item.date}|${item.startTime}`));
+      const unique = generated.filter((item) => {
+        const key = `${item.title}|${item.date}|${item.startTime}`;
+        if (existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      });
+      setScheduleEntries([...withoutDraft, ...unique]);
+      setSavedToastMessage(unique.length ? `已生成 ${unique.length} 项固定安排` : '相同安排已存在，无需重复添加');
+    } else {
+      setScheduleEntries((items) => items.some((item) => item.id === next.id) ? items.map((item) => item.id === next.id ? next : item) : [...items, next]);
+      setSavedToastMessage(next.kind === 'todo' ? '待办已保存' : '提醒已保存');
+    }
+    setScheduleDraft(null); setSavedToast(true); window.setTimeout(() => setSavedToast(false), 1800);
+  }
+
+  function deleteScheduleEntry(id: string) {
+    if (window.confirm('确定删除这项安排吗？此操作不可撤销。')) {
+      setScheduleEntries((items) => items.filter((item) => item.id !== id));
+      setScheduleDraft(null);
+    }
+  }
+
   function openNewStudent() {
     setStudentDraft({ id: `student-${Date.now()}`, name: '', nickname: '', grade: '一年级', school: '', parentName: '', parentPhone: '', subjects: ['数学'], defaultDuration: 90, defaultFee: 300, notes: '', locationShort: '', fullAddress: '', commuteMinutes: 0, color: studentColorPalette[students.length % studentColorPalette.length] });
   }
@@ -360,12 +474,17 @@ export default function Home() {
   }
 
   const monthLessons = calendarLessons.filter((lesson) => lesson.date.startsWith(`${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`));
+  const monthScheduleEntries = scheduleEntries.filter((entry) => entry.date.startsWith(`${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`));
   const activeFilterCount = selectedStudentIds.length + selectedSubjects.length;
   const selectedWeekStart = weekStartFor(selectedDate);
   const selectedWeekEnd = dateFrom(selectedWeekStart, 6);
   const calendarTitle = calendarMode === 'month'
     ? `${monthCursor.getFullYear()}年${monthCursor.getMonth() + 1}月`
     : `${formatShortDate(dateFrom(selectedWeekStart, 0))}–${formatShortDate(selectedWeekEnd)}`;
+  const selectedAgenda = [
+    ...selectedLessons.map((lesson) => ({ type: 'lesson' as const, startTime: lesson.startTime, lesson })),
+    ...selectedScheduleEntries.map((entry) => ({ type: 'schedule' as const, startTime: entry.startTime, entry })),
+  ].sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   return (
     <main className="app-shell" ref={rootRef}>
@@ -390,6 +509,7 @@ export default function Home() {
             <IconButton label={theme === 'light' ? '切换深色模式' : '切换浅色模式'} onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
               {theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}
             </IconButton>
+            {tab === 'calendar' && <button className="schedule-add-button" onClick={openNewScheduleEntry} aria-label="新增待办或提醒"><BellRing size={19} aria-hidden="true" /><span>事项</span></button>}
             <button className="add-button" onClick={tab === 'students' ? openNewStudent : openNewLesson} aria-label={tab === 'students' ? '新增学生' : '新增课程'}><Plus size={23} /></button>
           </div>
         </header>
@@ -408,7 +528,7 @@ export default function Home() {
               {filterOpen && <CalendarFilters students={students} selectedStudentIds={selectedStudentIds} selectedSubjects={selectedSubjects} onStudentChange={setSelectedStudentIds} onSubjectChange={setSelectedSubjects} />}
               <div className="calendar-heading">
                 <button className="today-button" onClick={() => { setMonthCursor(new Date(2026, 7, 1)); setSelectedDate('2026-08-26'); }}>今天</button>
-                <p>{calendarMode === 'month' ? `${monthLessons.length} 节课 · ${(monthLessons.reduce((sum, item) => sum + item.duration, 0) / 60).toFixed(1)} 小时` : '08:00–22:00 · 点击课程直接记录'}</p>
+                <p>{calendarMode === 'month' ? `${monthLessons.length} 节课 · ${monthScheduleEntries.length} 项提醒` : '08:00–22:00 · 点击课程或提醒查看'}</p>
                 <div className="month-nav">
                   <IconButton label={calendarMode === 'month' ? '上个月' : '上一周'} onClick={() => calendarMode === 'month' ? goMonth(-1) : goWeek(-1)}><ChevronLeft size={18} /></IconButton>
                   <IconButton label={calendarMode === 'month' ? '下个月' : '下一周'} onClick={() => calendarMode === 'month' ? goMonth(1) : goWeek(1)}><ChevronRight size={18} /></IconButton>
@@ -419,6 +539,7 @@ export default function Home() {
                 <div className="calendar-grid">
                   {calendarCells.map((cell) => {
                     const dayLessons = calendarLessons.filter((item) => item.date === cell.date);
+                    const dayScheduleEntries = scheduleEntries.filter((item) => item.date === cell.date);
                     const dayStudents = [...new Map(dayLessons.map((lesson) => [lesson.studentId, studentMap[lesson.studentId]])).values()].filter(Boolean) as Student[];
                     const colors = dayStudents.map((student) => studentColor(student));
                     const tint = colors.length === 1
@@ -427,27 +548,38 @@ export default function Home() {
                         ? `linear-gradient(135deg, ${colors.slice(0, 3).map((color, index, items) => `${colorWash(color, 0.24)} ${index / items.length * 100}% ${(index + 1) / items.length * 100}%`).join(', ')})`
                         : undefined;
                     const lessonNames = dayStudents.map((student) => student.nickname || student.name).join('、');
-                    return <button key={cell.date} style={tint ? { background: tint } : undefined} onClick={() => setSelectedDate(cell.date)} className={`date-cell ${dayLessons.length ? 'has-lessons' : ''} ${cell.date === selectedDate ? 'active' : ''} ${!cell.current ? 'outside' : ''}`} aria-label={`${cell.date}${dayLessons.length ? `，${dayLessons.length}节课：${lessonNames}` : ''}`}><span>{cell.day}</span>{colors.length > 0 && <i className="student-color-dots" aria-hidden="true">{colors.slice(0, 3).map((color, index) => <b key={`${color}-${index}`} style={{ backgroundColor: color }} />)}</i>}</button>;
+                    return <button key={cell.date} style={tint ? { background: tint } : undefined} onClick={() => setSelectedDate(cell.date)} className={`date-cell ${dayLessons.length ? 'has-lessons' : ''} ${dayScheduleEntries.length ? 'has-schedule-entry' : ''} ${cell.date === selectedDate ? 'active' : ''} ${!cell.current ? 'outside' : ''}`} aria-label={`${cell.date}${dayLessons.length ? `，${dayLessons.length}节课：${lessonNames}` : ''}${dayScheduleEntries.length ? `，${dayScheduleEntries.length}项待办或提醒` : ''}`}><span>{cell.day}</span>{colors.length > 0 && <i className="student-color-dots" aria-hidden="true">{colors.slice(0, 3).map((color, index) => <b key={`${color}-${index}`} style={{ backgroundColor: color }} />)}</i>}{dayScheduleEntries.length > 0 && <i className="calendar-schedule-mark" aria-hidden="true"><b /></i>}</button>;
                   })}
                 </div>
-              </> : <WeekCalendar selectedDate={selectedDate} lessons={calendarLessons} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} />}
+              </> : <WeekCalendar selectedDate={selectedDate} lessons={calendarLessons} scheduleEntries={scheduleEntries} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} onScheduleEntry={(entry) => setScheduleDraft({ ...entry, scheduleMode: 'single' })} />}
             </section>
 
             <section className="schedule-section">
               <div className="section-heading">
-                <div><p className="eyebrow">{formatShortDate(selectedDate)}</p><h3>当天课程</h3></div>
-                <span className="count-badge">{selectedLessons.length} 节</span>
+                <div><p className="eyebrow">{formatShortDate(selectedDate)}</p><h3>当天安排</h3></div>
+                <span className="count-badge">{selectedLessons.length} 课 · {selectedScheduleEntries.length} 事项</span>
               </div>
-              {selectedLessons.length ? selectedLessons.map((lesson) => {
+              {selectedAgenda.length ? selectedAgenda.map((agendaItem) => {
+                if (agendaItem.type === 'schedule') {
+                  const entry = agendaItem.entry;
+                  return <button className={`schedule-entry-card ${entry.kind} ${entry.completed ? 'completed' : ''}`} key={entry.id} onClick={() => setScheduleDraft({ ...entry, scheduleMode: 'single' })}>
+                    <div className="schedule-shape" aria-hidden="true">{entry.kind === 'todo' ? <ListTodo size={16} /> : <BellRing size={16} />}</div>
+                    <div className="time-block"><strong>{entry.startTime}</strong><span>{entry.duration} 分钟</span></div>
+                    <div className="schedule-entry-info"><strong>{entry.title}</strong><p>{entry.notes || (entry.kind === 'todo' ? '非课程待办' : '固定时间提醒')}</p></div>
+                    <span className="schedule-entry-status">{entry.completed ? '已完成' : entry.kind === 'todo' ? '待处理' : '提醒'}</span>
+                    <ChevronRight size={16} className="chevron" aria-hidden="true" />
+                  </button>;
+                }
+                const lesson = agendaItem.lesson;
                 const student = studentMap[lesson.studentId];
-                  return <button className="lesson-card" style={{ borderLeftColor: studentColor(student) }} key={lesson.id} onClick={() => setLessonDraft({ ...lesson, scheduleMode: 'single' })}>
+                return <button className="lesson-card" style={{ borderLeftColor: studentColor(student) }} key={lesson.id} onClick={() => setLessonDraft({ ...lesson, scheduleMode: 'single' })}>
                   <div className="time-block"><strong>{lesson.startTime}</strong><span>{lesson.duration} 分钟</span></div>
                   <div className="lesson-line" />
                   <div className="lesson-info"><div className="avatar" style={avatarStyle(student)}>{student?.nickname?.[0] || student?.name?.[0]}</div><div><strong>{student?.nickname || student?.name} · {lesson.subject}</strong><p className="lesson-location"><MapPin size={12} aria-hidden="true" />{student?.locationShort || '地点待填写'}</p><p>{lesson.teachingContent || '等待填写课后记录'}</p></div></div>
                   <span className={`status ${lesson.status === '已完成' ? 'done' : lesson.status === '已取消' ? 'cancelled' : 'booked'}`}>{lesson.status}</span>
                   <ChevronRight size={16} className="chevron" aria-hidden="true" />
                 </button>;
-              }) : <EmptyState icon={<CalendarDays />} title="当天还没有课程" action="添加课程" onAction={openNewLesson} />}
+              }) : <div className="agenda-empty-actions"><EmptyState icon={<CalendarDays />} title="当天还没有安排" action="添加课程" onAction={openNewLesson} /><button className="secondary-button" onClick={openNewScheduleEntry}><BellRing size={16} />添加待办或提醒</button></div>}
             </section>
           </div>
         )}
@@ -474,7 +606,8 @@ export default function Home() {
 
         {tab === 'stats' && (
           <div className="view-content stats-view">
-            <div className="range-switcher" role="group" aria-label="统计时间范围">{ranges.map((item) => <button key={item} className={range === item ? 'active' : ''} onClick={() => setRange(item)} aria-pressed={range === item}>{item}</button>)}</div>
+            <div className="range-switcher" role="group" aria-label="统计时间范围" style={{ '--range-index': ranges.indexOf(range) } as React.CSSProperties}><i className="range-active-indicator" aria-hidden="true" />{ranges.map((item) => <button key={item} className={range === item ? 'active' : ''} onClick={() => setRange(item)} aria-pressed={range === item}>{item}</button>)}</div>
+            <div className="stats-content" ref={statsContentRef} aria-live="polite">
             <section className="income-hero">
               <p>{range}应收</p><strong>{cnMoney.format(stats.receivable)}</strong>
               <span className="trend"><BarChart3 size={15} /> 较上月 +12%</span>
@@ -498,6 +631,7 @@ export default function Home() {
                 return <div className="contribution-row" key={student.id}><div className="avatar small" style={avatarStyle(student)}>{student.nickname?.[0] || student.name[0]}</div><div><span>{student.nickname || student.name}<strong>{cnMoney.format(amount)}</strong></span><div className="mini-track"><i style={{ transform: `scaleX(${amount / max})`, backgroundColor: studentColor(student) }} /></div></div></div>;
               })}
             </section>
+            </div>
           </div>
         )}
 
@@ -508,6 +642,7 @@ export default function Home() {
         </nav>
 
         {lessonDraft && <LessonEditor draft={lessonDraft} students={students} isNew={!lessons.some((lesson) => lesson.id === lessonDraft.id)} onChange={setLessonDraft} onClose={() => setLessonDraft(null)} onSave={saveLesson} onDelete={() => deleteLesson(lessonDraft.id)} />}
+        {scheduleDraft && <ScheduleEntryEditor draft={scheduleDraft} isNew={!scheduleEntries.some((entry) => entry.id === scheduleDraft.id)} onChange={setScheduleDraft} onClose={() => setScheduleDraft(null)} onSave={saveScheduleEntry} onDelete={() => deleteScheduleEntry(scheduleDraft.id)} />}
         {studentDraft && <StudentEditor draft={studentDraft} onChange={setStudentDraft} onClose={() => setStudentDraft(null)} onSave={saveStudent} />}
         {pinDialogOpen && <ArchivePinDialog onClose={() => setPinDialogOpen(false)} onUnlock={() => { setArchiveUnlocked(true); setPinDialogOpen(false); }} />}
         {savedToast && <div className="toast" role="status"><Check size={17} /> {savedToastMessage}</div>}
@@ -536,7 +671,7 @@ function CalendarFilters({ students, selectedStudentIds, selectedSubjects, onStu
   </section>;
 }
 
-function WeekCalendar({ selectedDate, lessons, students, onSelectDate, onLesson }: { selectedDate: string; lessons: Lesson[]; students: Record<string, Student>; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void }) {
+function WeekCalendar({ selectedDate, lessons, scheduleEntries, students, onSelectDate, onLesson, onScheduleEntry }: { selectedDate: string; lessons: Lesson[]; scheduleEntries: ScheduleEntry[]; students: Record<string, Student>; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void; onScheduleEntry: (entry: ScheduleEntry) => void }) {
   const start = weekStartFor(selectedDate);
   const days = weekDays.map((label, index) => ({ label, date: dateFrom(start, index) }));
   const [expanded, setExpanded] = useState(false);
@@ -583,9 +718,9 @@ function WeekCalendar({ selectedDate, lessons, students, onSelectDate, onLesson 
         <button type="button" className="selected" aria-pressed="true">简略版</button>
         <button type="button" ref={expandButtonRef} aria-pressed="false" onClick={() => setExpanded(true)}><Maximize2 size={14} aria-hidden="true" />完整课表</button>
       </div>
-      <small>色块位置对应上课时间</small>
+      <small>色块与切角事项都对应时间</small>
     </div>
-    <WeekTimeline compact days={days} lessons={lessons} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={onLesson} />
+    <WeekTimeline compact days={days} lessons={lessons} scheduleEntries={scheduleEntries} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={onLesson} onScheduleEntry={onScheduleEntry} />
     {expanded && <div className="expanded-week-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeExpanded(); }}>
       <section className="expanded-week-dialog" role="dialog" aria-modal="true" aria-labelledby="expanded-week-title" onKeyDown={trapDialogFocus}>
         <header>
@@ -594,18 +729,18 @@ function WeekCalendar({ selectedDate, lessons, students, onSelectDate, onLesson 
         </header>
         <div className="expanded-week-tools">
           <button type="button" className="week-return-button week-toolbar-return" onClick={closeExpanded}><ArrowLeft size={16} aria-hidden="true" />收起为简略版</button>
-          <p className="expanded-week-hint"><Maximize2 size={14} aria-hidden="true" />左右滑动或使用箭头查看整周；点击色块打开课程记录。</p>
+          <p className="expanded-week-hint"><Maximize2 size={14} aria-hidden="true" />左右滑动查看整周；实色色块是课程，切角虚线块是待办或提醒。</p>
           <div className="week-scroll-controls"><button type="button" className="icon-button" onClick={() => scrollExpanded(-1)} aria-label="向左查看课表"><ChevronLeft size={18} aria-hidden="true" /></button><button type="button" className="icon-button" onClick={() => scrollExpanded(1)} aria-label="向右查看课表"><ChevronRight size={18} aria-hidden="true" /></button></div>
         </div>
         <div className="expanded-week-scroll" ref={expandedScrollRef} tabIndex={0}>
-          <WeekTimeline days={days} lessons={lessons} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={(lesson) => { setExpanded(false); onLesson(lesson); }} />
+          <WeekTimeline days={days} lessons={lessons} scheduleEntries={scheduleEntries} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={(lesson) => { setExpanded(false); onLesson(lesson); }} onScheduleEntry={(entry) => { setExpanded(false); onScheduleEntry(entry); }} />
         </div>
       </section>
     </div>}
   </>;
 }
 
-function WeekTimeline({ compact = false, days, lessons, students, selectedDate, onSelectDate, onLesson }: { compact?: boolean; days: { label: string; date: string }[]; lessons: Lesson[]; students: Record<string, Student>; selectedDate: string; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void }) {
+function WeekTimeline({ compact = false, days, lessons, scheduleEntries, students, selectedDate, onSelectDate, onLesson, onScheduleEntry }: { compact?: boolean; days: { label: string; date: string }[]; lessons: Lesson[]; scheduleEntries: ScheduleEntry[]; students: Record<string, Student>; selectedDate: string; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void; onScheduleEntry: (entry: ScheduleEntry) => void }) {
   const startHour = 8;
   const endHour = 22;
   const rowHeight = compact ? 20 : 64;
@@ -635,6 +770,17 @@ function WeekTimeline({ compact = false, days, lessons, students, selectedDate, 
             if (top >= totalHeight || height <= 0) return null;
             return <button type="button" className={`week-timeline-lesson ${compact ? 'compact-lesson' : 'full-lesson'} ${lesson.duration < 75 ? 'short-lesson' : ''}`} key={lesson.id} style={{ top, height, backgroundColor: color, borderColor: colorWash(color, 0.72), color: contrastText(color) }} onClick={() => onLesson(lesson)} aria-label={`${day.date} ${lesson.startTime}到${lesson.endTime}，${student?.nickname || student?.name}，${lesson.subject}${student?.locationShort ? `，${student.locationShort}` : ''}`}>
               {compact ? <><span>{lesson.startTime}</span><strong>{compactName}</strong><small>{lesson.subject.slice(0, 1)}</small></> : <><strong>{lesson.startTime}–{lesson.endTime}</strong><span>{student?.nickname || student?.name}</span><small>{lesson.subject}{student?.locationShort ? ` · ${student.locationShort}` : ''}</small></>}
+            </button>;
+          })}
+          {scheduleEntries.filter((entry) => entry.date === day.date).map((entry) => {
+            const [hour, minute] = entry.startTime.split(':').map(Number);
+            const startMinutes = (hour - startHour) * 60 + minute;
+            const top = Math.max(0, startMinutes / 60 * rowHeight);
+            const available = Math.max(0, totalHeight - top - 1);
+            const height = Math.min(available, Math.max(compact ? 16 : 36, entry.duration / 60 * rowHeight - (compact ? 1 : 4)));
+            if (top >= totalHeight || height <= 0) return null;
+            return <button type="button" className={`week-schedule-entry ${compact ? 'compact-schedule-entry' : 'full-schedule-entry'} ${entry.kind} ${entry.completed ? 'completed' : ''}`} key={entry.id} style={{ top, height }} onClick={() => onScheduleEntry(entry)} aria-label={`${day.date} ${entry.startTime}到${entry.endTime}，${entry.kind === 'todo' ? '待办' : '提醒'}：${entry.title}${entry.completed ? '，已完成' : ''}`}>
+              {compact ? <><span>{entry.kind === 'todo' ? '办' : '铃'}</span><strong>{entry.title.slice(0, 3)}</strong></> : <><strong>{entry.startTime} · {entry.kind === 'todo' ? '待办' : '提醒'}</strong><span>{entry.title}</span><small>{entry.completed ? '已完成' : entry.notes || '点击查看详情'}</small></>}
             </button>;
           })}
         </div>)}
@@ -685,6 +831,51 @@ function MasteryBadges({ lesson }: { lesson: Lesson }) {
     { label: '未掌握', value: legacyMasteryText(lesson, '未掌握'), className: 'not-mastered' },
   ].filter((entry) => entry.value.trim());
   return entries.length ? <div className="mastery-badges">{entries.map((entry) => <span className={entry.className} key={entry.label}><b>{entry.label}</b>{entry.value}</span>)}</div> : <div className="mastery-badges"><span className="empty"><b>掌握记录</b>待补充</span></div>;
+}
+
+function ScheduleEntryEditor({ draft, isNew, onChange, onClose, onSave, onDelete }: { draft: ScheduleEntry; isNew: boolean; onChange: (entry: ScheduleEntry) => void; onClose: () => void; onSave: () => void; onDelete: () => void }) {
+  const isWeekly = draft.scheduleMode === 'weekly';
+  const repeatDates = recurringDates(draft.repeatStart || draft.date, draft.repeatEnd || draft.date, draft.repeatWeekdays || []);
+  const invalidTime = draft.endTime <= draft.startTime;
+  const canSave = draft.title.trim() && !invalidTime && (!isWeekly || repeatDates.length > 0);
+
+  function setScheduleMode(mode: ScheduleMode) {
+    if (mode === 'single') onChange({ ...draft, scheduleMode: mode, repeatStart: draft.date, repeatEnd: draft.date, repeatWeekdays: [weekdayNumber(draft.date)] });
+    else onChange({ ...draft, scheduleMode: mode, repeatStart: draft.repeatStart || draft.date, repeatEnd: draft.repeatEnd || dateFrom(new Date(`${draft.date}T12:00:00`), 28), repeatWeekdays: draft.repeatWeekdays?.length ? draft.repeatWeekdays : [weekdayNumber(draft.date)] });
+  }
+
+  return <div className="sheet-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="sheet schedule-entry-sheet" role="dialog" aria-modal="true" aria-labelledby="schedule-entry-title">
+      <div className="sheet-handle" />
+      <header className="sheet-header"><div><p className="eyebrow">Personal schedule</p><h2 id="schedule-entry-title">{isNew ? '新增待办或提醒' : '编辑待办或提醒'}</h2></div><IconButton label="关闭" onClick={onClose}><X size={20} /></IconButton></header>
+      <div className="sheet-content">
+        <section className="form-section">
+          <div className="form-section-heading"><span>{draft.kind === 'todo' ? <ListTodo size={18} /> : <BellRing size={18} />}</span><div><strong>安排类型</strong><small>用不同于课程色块的形状显示</small></div></div>
+          <div className="entry-kind-switch" role="group" aria-label="安排类型">
+            <button type="button" className={draft.kind === 'todo' ? 'selected' : ''} aria-pressed={draft.kind === 'todo'} onClick={() => onChange({ ...draft, kind: 'todo' })}><ListTodo size={16} aria-hidden="true" />非课程待办</button>
+            <button type="button" className={draft.kind === 'reminder' ? 'selected' : ''} aria-pressed={draft.kind === 'reminder'} onClick={() => onChange({ ...draft, kind: 'reminder' })}><BellRing size={16} aria-hidden="true" />固定时间提醒</button>
+          </div>
+          <label className="field"><span>标题</span><input value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} placeholder={draft.kind === 'todo' ? '例如：整理错题卡' : '例如：提前出发去学生家'} autoFocus /></label>
+          <label className="field"><span>补充说明</span><textarea value={draft.notes} onChange={(event) => onChange({ ...draft, notes: event.target.value })} placeholder="所需材料、地点、需要联系的人……" /></label>
+        </section>
+
+        <section className="form-section">
+          <div className="form-section-heading"><span><CalendarRange size={18} /></span><div><strong>日期与重复</strong><small>可保存一次，也可按周循环</small></div></div>
+          <div className="schedule-mode-switch" role="group" aria-label="安排重复方式"><button type="button" className={!isWeekly ? 'selected' : ''} aria-pressed={!isWeekly} onClick={() => setScheduleMode('single')}>单次安排</button><button type="button" className={isWeekly ? 'selected' : ''} aria-pressed={isWeekly} onClick={() => setScheduleMode('weekly')}><Repeat2 size={15} aria-hidden="true" />按周循环</button></div>
+          {!isWeekly ? <label className="field first-field"><span>日期</span><input type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value, repeatStart: event.target.value, repeatEnd: event.target.value, repeatWeekdays: [weekdayNumber(event.target.value)] })} /></label> : <>
+            <div className="date-range-grid"><label><span>开始日期</span><input type="date" value={draft.repeatStart || draft.date} onChange={(event) => onChange({ ...draft, repeatStart: event.target.value, date: event.target.value })} /></label><i>至</i><label><span>结束日期</span><input type="date" value={draft.repeatEnd || draft.date} onChange={(event) => onChange({ ...draft, repeatEnd: event.target.value })} /></label></div>
+            <fieldset className="weekday-picker"><legend>每周重复</legend><div>{weekDays.map((day, index) => { const value = index + 1; const selected = (draft.repeatWeekdays || []).includes(value); return <button type="button" key={day} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onChange({ ...draft, repeatWeekdays: selected ? (draft.repeatWeekdays || []).filter((item) => item !== value) : [...(draft.repeatWeekdays || []), value].sort() })}>周{day}<Check size={11} aria-hidden="true" /></button>; })}</div></fieldset>
+            <p className="repeat-summary"><Repeat2 size={14} aria-hidden="true" />当前将生成 <strong>{repeatDates.length}</strong> 项固定安排</p>
+          </>}
+          <div className="form-grid two time-grid"><label><span>开始时间</span><input type="time" value={draft.startTime} onChange={(event) => onChange({ ...draft, startTime: event.target.value, duration: durationFromTimes(event.target.value, draft.endTime, draft.duration) })} /></label><label><span>结束时间</span><input type="time" value={draft.endTime} onChange={(event) => onChange({ ...draft, endTime: event.target.value, duration: durationFromTimes(draft.startTime, event.target.value, draft.duration) })} /></label></div>
+          {invalidTime && <p className="schedule-error" role="alert">结束时间需要晚于开始时间。</p>}
+        </section>
+
+        <section className="form-section completion-section"><button type="button" className={draft.completed ? 'completion-toggle completed' : 'completion-toggle'} aria-pressed={draft.completed} onClick={() => onChange({ ...draft, completed: !draft.completed })}><span><Check size={17} aria-hidden="true" /></span><div><strong>{draft.completed ? '已标记为完成' : '标记为已完成'}</strong><small>完成后仍保留在课表中，方便回顾。</small></div></button></section>
+      </div>
+      <footer className="sheet-footer"><button className="primary-button" onClick={onSave} disabled={!canSave}><Check size={17} />保存安排</button>{!isNew && <button className="danger-button" onClick={onDelete}><Trash2 size={17} />删除</button>}</footer>
+    </section>
+  </div>;
 }
 
 function LessonEditor({ draft, students, isNew, onChange, onClose, onSave, onDelete }: { draft: Lesson; students: Student[]; isNew: boolean; onChange: (lesson: Lesson) => void; onClose: () => void; onSave: (complete?: boolean) => void; onDelete: () => void }) {
