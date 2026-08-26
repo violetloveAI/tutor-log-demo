@@ -142,9 +142,13 @@ button:active { transform: scale(.97); }
 .expanded-week-dialog > header .eyebrow { margin-bottom: 4px; }
 .expanded-week-dialog > header h2 { margin: 0; font-family: var(--font-display); font-size: 27px; letter-spacing: -.045em; }
 .expanded-week-dialog > header span { display: block; margin-top: 5px; color: var(--muted); font-family: var(--font-numeric); font-size: 10px; font-variant-numeric: tabular-nums; }
-.expanded-week-tools { flex: none; display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
-.expanded-week-hint { flex: 1; min-height: 44px; display: flex; align-items: center; gap: 7px; margin: 0; padding: 7px 11px; border-radius: 11px; background: var(--accent-soft); color: var(--accent); font-size: 9px; line-height: 1.45; }
-.expanded-week-tools > div { flex: none; display: flex; gap: 6px; }
+.week-return-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--card); color: var(--ink); cursor: pointer; font: inherit; font-size: 10px; font-weight: 780; white-space: nowrap; touch-action: manipulation; transition: border-color .18s ease, background-color .18s ease, color .18s ease; }
+.week-return-button:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.week-return-button:active { background: color-mix(in srgb, var(--accent-soft) 78%, var(--accent)); }
+.expanded-week-tools { flex: none; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin: 0 0 10px; }
+.week-toolbar-return { grid-column: 1; grid-row: 1; }
+.expanded-week-hint { grid-column: 1 / -1; grid-row: 2; min-height: 44px; display: flex; align-items: center; gap: 7px; margin: 0; padding: 7px 11px; border-radius: 11px; background: var(--accent-soft); color: var(--accent); font-size: 9px; line-height: 1.45; }
+.week-scroll-controls { grid-column: 3; grid-row: 1; display: flex; gap: 6px; }
 .expanded-week-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 18px; background: var(--card); overscroll-behavior: contain; scroll-padding: 64px 0 0 60px; }
 .week-timeline.full { width: max(100%, 760px); overflow: visible; border: 0; border-radius: 0; }
 .week-timeline.full .week-timeline-header { position: sticky; z-index: 5; top: 0; grid-template-columns: 60px repeat(7, minmax(96px, 1fr)); }

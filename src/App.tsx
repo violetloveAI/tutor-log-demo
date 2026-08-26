@@ -544,13 +544,17 @@ function WeekCalendar({ selectedDate, lessons, students, onSelectDate, onLesson 
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const expandedScrollRef = useRef<HTMLDivElement>(null);
 
+  function closeExpanded() {
+    setExpanded(false);
+  }
+
   useEffect(() => {
     if (!expanded) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     closeButtonRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setExpanded(false);
+      if (event.key === 'Escape') closeExpanded();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
@@ -582,13 +586,17 @@ function WeekCalendar({ selectedDate, lessons, students, onSelectDate, onLesson 
       <small>色块位置对应上课时间</small>
     </div>
     <WeekTimeline compact days={days} lessons={lessons} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={onLesson} />
-    {expanded && <div className="expanded-week-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setExpanded(false); }}>
+    {expanded && <div className="expanded-week-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeExpanded(); }}>
       <section className="expanded-week-dialog" role="dialog" aria-modal="true" aria-labelledby="expanded-week-title" onKeyDown={trapDialogFocus}>
         <header>
           <div><p className="eyebrow">Full weekly schedule</p><h2 id="expanded-week-title">完整周课表</h2><span>{formatShortDate(days[0].date)}–{formatShortDate(days[6].date)} · 08:00–22:00</span></div>
-          <button ref={closeButtonRef} className="icon-button" onClick={() => setExpanded(false)} aria-label="关闭完整课表"><X size={20} aria-hidden="true" /></button>
+          <button ref={closeButtonRef} type="button" className="week-return-button" onClick={closeExpanded}><ArrowLeft size={17} aria-hidden="true" />返回简略版</button>
         </header>
-        <div className="expanded-week-tools"><p className="expanded-week-hint"><Maximize2 size={14} aria-hidden="true" />左右滑动或使用箭头查看整周；点击色块打开课程记录。</p><div><button type="button" className="icon-button" onClick={() => scrollExpanded(-1)} aria-label="向左查看课表"><ChevronLeft size={18} aria-hidden="true" /></button><button type="button" className="icon-button" onClick={() => scrollExpanded(1)} aria-label="向右查看课表"><ChevronRight size={18} aria-hidden="true" /></button></div></div>
+        <div className="expanded-week-tools">
+          <button type="button" className="week-return-button week-toolbar-return" onClick={closeExpanded}><ArrowLeft size={16} aria-hidden="true" />收起为简略版</button>
+          <p className="expanded-week-hint"><Maximize2 size={14} aria-hidden="true" />左右滑动或使用箭头查看整周；点击色块打开课程记录。</p>
+          <div className="week-scroll-controls"><button type="button" className="icon-button" onClick={() => scrollExpanded(-1)} aria-label="向左查看课表"><ChevronLeft size={18} aria-hidden="true" /></button><button type="button" className="icon-button" onClick={() => scrollExpanded(1)} aria-label="向右查看课表"><ChevronRight size={18} aria-hidden="true" /></button></div>
+        </div>
         <div className="expanded-week-scroll" ref={expandedScrollRef} tabIndex={0}>
           <WeekTimeline days={days} lessons={lessons} students={students} selectedDate={selectedDate} onSelectDate={onSelectDate} onLesson={(lesson) => { setExpanded(false); onLesson(lesson); }} />
         </div>
