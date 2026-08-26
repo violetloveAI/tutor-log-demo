@@ -18,6 +18,10 @@ type Range = '今天' | '本周' | '本月' | '本年' | '全部';
 type CalendarMode = 'month' | 'week';
 type ScheduleMode = 'single' | 'weekly';
 type ScheduleEntryKind = 'todo' | 'reminder';
+type TutoringStatus = 'active' | 'ended';
+type StudentStatusFilter = 'all' | TutoringStatus;
+type ContributionMetric = 'income' | 'hours' | 'lessons';
+type StatPeriod = { key: string; label: string; detail: string; start: string; end: string };
 
 type Student = {
   id: string; name: string; nickname: string; grade: string; school: string;
@@ -25,6 +29,7 @@ type Student = {
   defaultDuration: number; defaultFee: number; notes: string;
   locationShort?: string; fullAddress?: string; commuteMinutes?: number; color?: string;
   teacherEvaluation?: string; parentEvaluation?: string; archiveNotes?: string;
+  tutoringStatus?: TutoringStatus; tutoringStartDate?: string; tutoringEndDate?: string;
 };
 
 type Lesson = {
@@ -47,12 +52,12 @@ type ScheduleEntry = {
 const studentColorPalette = ['#7b6ba8', '#5f7f65', '#b16f4f', '#397c8f', '#a05c75', '#8a713e', '#526fa3', '#7b715f'];
 
 const initialStudents: Student[] = [
-  { id: 'mia', name: '林知夏', nickname: 'Mia', grade: '五年级', school: '启明小学', parentName: '林女士', parentPhone: '演示号码', subjects: ['数学', '英语'], defaultDuration: 90, defaultFee: 300, notes: '应用题读题时容易漏条件。', locationShort: '徐家汇', fullAddress: '演示地址：徐汇区某小区', commuteMinutes: 35, color: studentColorPalette[0], teacherEvaluation: '理解速度快，遇到综合题容易急，需要练习把条件逐条圈出。', parentEvaluation: '沟通及时，比较关注学习方法。', archiveNotes: '阶段目标：开学前把分数应用题正确率稳定到 85%。' },
-  { id: 'leo', name: '周予安', nickname: 'Leo', grade: '四年级', school: '实验小学', parentName: '周先生', parentPhone: '演示号码', subjects: ['语文', '英语'], defaultDuration: 60, defaultFee: 220, notes: '口语表达积极，书写需要更细心。', locationShort: '浦东', fullAddress: '演示地址：浦东新区某小区', commuteMinutes: 50, color: studentColorPalette[1], teacherEvaluation: '口语参与度高，单词拼写需要建立错词本。', parentEvaluation: '更偏结果导向，需要每两周同步一次进展。', archiveNotes: '适合短任务、快反馈的课堂节奏。' },
-  { id: 'emma', name: '陈嘉禾', nickname: 'Emma', grade: '六年级', school: '文澜小学', parentName: '陈女士', parentPhone: '演示号码', subjects: ['语文', '数学'], defaultDuration: 90, defaultFee: 280, notes: '小升初阶段，重点保持稳定节奏。', locationShort: '杨浦', fullAddress: '演示地址：杨浦区某小区', commuteMinutes: 42, color: studentColorPalette[2], teacherEvaluation: '思路完整，表达有条理，作文素材积累不足。', parentEvaluation: '配合度高，会主动确认作业完成情况。', archiveNotes: '九月前完成两套小升初综合卷。' },
-  { id: 'nora', name: '沈星遥', nickname: 'Nora', grade: '三年级', school: '汇师小学', parentName: '沈女士', parentPhone: '演示号码', subjects: ['语文', '英语'], defaultDuration: 60, defaultFee: 240, notes: '阅读兴趣浓，朗读很有表现力。', locationShort: '静安寺', fullAddress: '演示地址：静安区某小区', commuteMinutes: 28, color: studentColorPalette[3], teacherEvaluation: '表达欲强，注意把答案写完整。', parentEvaluation: '沟通细致，时间安排稳定。', archiveNotes: '可多安排故事复述与看图写话。' },
-  { id: 'felix', name: '顾明川', nickname: 'Felix', grade: '初一', school: '市西初级中学', parentName: '顾先生', parentPhone: '演示号码', subjects: ['数学', '英语'], defaultDuration: 120, defaultFee: 420, notes: '基础不错，需要适应初中题量。', locationShort: '中山公园', fullAddress: '演示地址：长宁区某小区', commuteMinutes: 32, color: studentColorPalette[4], teacherEvaluation: '推理能力好，但步骤书写过于跳跃。', parentEvaluation: '尊重课堂节奏，希望每月收到一次复盘。', archiveNotes: '开学第一个月重点观察作业量和适应情况。' },
-  { id: 'yoyo', name: '唐语桐', nickname: 'Yoyo', grade: '二年级', school: '明珠小学', parentName: '唐女士', parentPhone: '演示号码', subjects: ['语文', '数学'], defaultDuration: 60, defaultFee: 200, notes: '低年级，以兴趣和习惯培养为主。', locationShort: '世纪公园', fullAddress: '演示地址：浦东新区某小区', commuteMinutes: 46, color: studentColorPalette[5], teacherEvaluation: '专注约 25 分钟，适合穿插卡片游戏。', parentEvaluation: '配合准备教具，反馈温和。', archiveNotes: '避免一次布置过多书面作业。' },
+  { id: 'mia', name: '林知夏', nickname: 'Mia', grade: '五年级', school: '启明小学', parentName: '林女士', parentPhone: '演示号码', subjects: ['数学', '英语'], defaultDuration: 90, defaultFee: 300, notes: '应用题读题时容易漏条件。', locationShort: '徐家汇', fullAddress: '演示地址：徐汇区某小区', commuteMinutes: 35, color: studentColorPalette[0], teacherEvaluation: '理解速度快，遇到综合题容易急，需要练习把条件逐条圈出。', parentEvaluation: '沟通及时，比较关注学习方法。', archiveNotes: '阶段目标：开学前把分数应用题正确率稳定到 85%。', tutoringStatus: 'active', tutoringStartDate: '2026-07-01', tutoringEndDate: '' },
+  { id: 'leo', name: '周予安', nickname: 'Leo', grade: '四年级', school: '实验小学', parentName: '周先生', parentPhone: '演示号码', subjects: ['语文', '英语'], defaultDuration: 60, defaultFee: 220, notes: '口语表达积极，书写需要更细心。', locationShort: '浦东', fullAddress: '演示地址：浦东新区某小区', commuteMinutes: 50, color: studentColorPalette[1], teacherEvaluation: '口语参与度高，单词拼写需要建立错词本。', parentEvaluation: '更偏结果导向，需要每两周同步一次进展。', archiveNotes: '适合短任务、快反馈的课堂节奏。', tutoringStatus: 'active', tutoringStartDate: '2026-06-01', tutoringEndDate: '' },
+  { id: 'emma', name: '陈嘉禾', nickname: 'Emma', grade: '六年级', school: '文澜小学', parentName: '陈女士', parentPhone: '演示号码', subjects: ['语文', '数学'], defaultDuration: 90, defaultFee: 280, notes: '小升初阶段课程已完成，保留历史记录。', locationShort: '杨浦', fullAddress: '演示地址：杨浦区某小区', commuteMinutes: 42, color: studentColorPalette[2], teacherEvaluation: '思路完整，表达有条理，作文素材积累不足。', parentEvaluation: '配合度高，会主动确认作业完成情况。', archiveNotes: '阶段课程已经完成，可在新学期按需重新开启。', tutoringStatus: 'ended', tutoringStartDate: '2026-05-15', tutoringEndDate: '2026-08-23' },
+  { id: 'nora', name: '沈星遥', nickname: 'Nora', grade: '三年级', school: '汇师小学', parentName: '沈女士', parentPhone: '演示号码', subjects: ['语文', '英语'], defaultDuration: 60, defaultFee: 240, notes: '阅读兴趣浓，朗读很有表现力。', locationShort: '静安寺', fullAddress: '演示地址：静安区某小区', commuteMinutes: 28, color: studentColorPalette[3], teacherEvaluation: '表达欲强，注意把答案写完整。', parentEvaluation: '沟通细致，时间安排稳定。', archiveNotes: '可多安排故事复述与看图写话。', tutoringStatus: 'active', tutoringStartDate: '2026-08-01', tutoringEndDate: '2026-10-31' },
+  { id: 'felix', name: '顾明川', nickname: 'Felix', grade: '初一', school: '市西初级中学', parentName: '顾先生', parentPhone: '演示号码', subjects: ['数学', '英语'], defaultDuration: 120, defaultFee: 420, notes: '基础不错，需要适应初中题量。', locationShort: '中山公园', fullAddress: '演示地址：长宁区某小区', commuteMinutes: 32, color: studentColorPalette[4], teacherEvaluation: '推理能力好，但步骤书写过于跳跃。', parentEvaluation: '尊重课堂节奏，希望每月收到一次复盘。', archiveNotes: '开学第一个月重点观察作业量和适应情况。', tutoringStatus: 'active', tutoringStartDate: '2026-07-20', tutoringEndDate: '' },
+  { id: 'yoyo', name: '唐语桐', nickname: 'Yoyo', grade: '二年级', school: '明珠小学', parentName: '唐女士', parentPhone: '演示号码', subjects: ['语文', '数学'], defaultDuration: 60, defaultFee: 200, notes: '低年级，以兴趣和习惯培养为主。', locationShort: '世纪公园', fullAddress: '演示地址：浦东新区某小区', commuteMinutes: 46, color: studentColorPalette[5], teacherEvaluation: '专注约 25 分钟，适合穿插卡片游戏。', parentEvaluation: '配合准备教具，反馈温和。', archiveNotes: '避免一次布置过多书面作业。', tutoringStatus: 'active', tutoringStartDate: '2026-07-15', tutoringEndDate: '' },
 ];
 
 function demoLesson(id: string, studentId: string, date: string, startTime: string, endTime: string, subject: Subject, teachingContent: string, fee: number, options: Partial<Lesson> = {}): Lesson {
@@ -111,6 +116,33 @@ const subjects: Subject[] = ['语文', '数学', '英语'];
 const statusOptions: LessonStatus[] = ['已预约', '已完成', '已取消'];
 const ranges: Range[] = ['今天', '本周', '本月', '本年', '全部'];
 const cnMoney = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 });
+const demoToday = '2026-08-26';
+
+function tutoringStatusFor(student?: Student): TutoringStatus {
+  if (!student) return 'active';
+  if (student.tutoringStatus === 'ended') return 'ended';
+  if (student.tutoringEndDate && student.tutoringEndDate < demoToday) return 'ended';
+  return 'active';
+}
+
+function studentCanAttendOn(student: Student | undefined, date: string) {
+  if (!student) return true;
+  if (student.tutoringStartDate && date < student.tutoringStartDate) return false;
+  if (student.tutoringEndDate && date > student.tutoringEndDate) return false;
+  if (student.tutoringStatus === 'ended' && !student.tutoringEndDate && date > demoToday) return false;
+  return true;
+}
+
+function tutoringStatusLabel(student?: Student) {
+  return tutoringStatusFor(student) === 'active' ? '正在授课' : '已结课';
+}
+
+function calculateLessonStats(items: Lesson[]) {
+  const receivable = items.reduce((sum, item) => sum + item.fee, 0);
+  const paid = items.filter((item) => item.payment === '已收款').reduce((sum, item) => sum + item.fee, 0);
+  const minutes = items.reduce((sum, item) => sum + item.duration, 0);
+  return { receivable, paid, unpaid: receivable - paid, hours: minutes / 60, count: items.length, hourly: minutes ? receivable / (minutes / 60) : 0 };
+}
 
 function studentColor(student?: Student) {
   return student?.color || '#6d7f6a';
@@ -251,6 +283,8 @@ function IconButton({ label, children, onClick, pressed }: { label: string; chil
 export default function Home() {
   const rootRef = useRef<HTMLElement>(null);
   const statsContentRef = useRef<HTMLDivElement>(null);
+  const incomeValueRef = useRef<HTMLElement>(null);
+  const previousIncomeRef = useRef(0);
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [lessons, setLessons] = useState<Lesson[]>(initialLessons);
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>(initialScheduleEntries);
@@ -259,7 +293,10 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState('2026-08-26');
   const [monthCursor, setMonthCursor] = useState(new Date(2026, 7, 1));
   const [range, setRange] = useState<Range>('本月');
+  const [activeStatPeriodIndex, setActiveStatPeriodIndex] = useState(3);
+  const [contributionMetric, setContributionMetric] = useState<ContributionMetric>('income');
   const [query, setQuery] = useState('');
+  const [studentStatusFilter, setStudentStatusFilter] = useState<StudentStatusFilter>('active');
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
   const [lessonDraft, setLessonDraft] = useState<Lesson | null>(null);
   const [scheduleDraft, setScheduleDraft] = useState<ScheduleEntry | null>(null);
@@ -276,7 +313,7 @@ export default function Home() {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('tutor-log-demo-data-v2');
+      const stored = localStorage.getItem('tutor-log-demo-data-v3');
       if (stored) {
         const parsed = JSON.parse(stored) as { students: Student[]; lessons: Lesson[]; scheduleEntries?: ScheduleEntry[] };
         if (parsed.students?.length) setStudents(parsed.students.map((student, index) => ({
@@ -285,6 +322,9 @@ export default function Home() {
           fullAddress: student.fullAddress || '',
           commuteMinutes: student.commuteMinutes || 0,
           color: student.color || studentColorPalette[index % studentColorPalette.length],
+          tutoringStatus: student.tutoringStatus || 'active',
+          tutoringStartDate: student.tutoringStartDate || '',
+          tutoringEndDate: student.tutoringEndDate || '',
         })));
         if (parsed.lessons?.length) setLessons(parsed.lessons.map((lesson) => ({
           ...lesson,
@@ -305,7 +345,7 @@ export default function Home() {
   }, [theme]);
 
   useEffect(() => {
-    if (ready) localStorage.setItem('tutor-log-demo-data-v2', JSON.stringify({ students, lessons, scheduleEntries }));
+    if (ready) localStorage.setItem('tutor-log-demo-data-v3', JSON.stringify({ students, lessons, scheduleEntries }));
   }, [students, lessons, scheduleEntries, ready]);
 
   useEffect(() => {
@@ -322,20 +362,21 @@ export default function Home() {
   useEffect(() => {
     if (tab !== 'stats' || !statsContentRef.current) return;
     const target = statsContentRef.current;
-    const bars = target.querySelectorAll('.sparkline i, .progress-track i, .mini-track i');
+    const bars = target.querySelectorAll('.period-bar-button, .contribution-row');
     const mm = gsap.matchMedia();
     mm.add('(prefers-reduced-motion: no-preference)', () => {
       gsap.killTweensOf([target, bars]);
-      gsap.fromTo(target, { autoAlpha: 0.72, y: 7 }, { autoAlpha: 1, y: 0, duration: 0.22, ease: 'power2.out', clearProps: 'all' });
-      gsap.fromTo(bars, { scaleY: 0.42, transformOrigin: 'bottom' }, { scaleY: 1, duration: 0.24, stagger: 0.028, ease: 'power2.out', clearProps: 'scaleY' });
+      gsap.fromTo(target, { autoAlpha: 0.74, y: 7 }, { autoAlpha: 1, y: 0, duration: 0.22, ease: 'power2.out', clearProps: 'all' });
+      gsap.fromTo(bars, { autoAlpha: 0.58, y: 6 }, { autoAlpha: 1, y: 0, duration: 0.24, stagger: 0.03, ease: 'power2.out', clearProps: 'all' });
     });
     return () => mm.revert();
-  }, [range, tab]);
+  }, [range, activeStatPeriodIndex, contributionMetric, tab]);
 
   const studentMap = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student])), [students]);
   const calendarLessons = useMemo(() => lessons.filter((lesson) => lesson.status !== '已取消'
+    && studentCanAttendOn(studentMap[lesson.studentId], lesson.date)
     && (!selectedStudentIds.length || selectedStudentIds.includes(lesson.studentId))
-    && (!selectedSubjects.length || selectedSubjects.includes(lesson.subject))), [lessons, selectedStudentIds, selectedSubjects]);
+    && (!selectedSubjects.length || selectedSubjects.includes(lesson.subject))), [lessons, studentMap, selectedStudentIds, selectedSubjects]);
   const selectedLessons = calendarLessons.filter((lesson) => lesson.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const selectedScheduleEntries = scheduleEntries.filter((entry) => entry.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const activeStudent = activeStudentId ? studentMap[activeStudentId] : null;
@@ -354,25 +395,82 @@ export default function Home() {
     });
   }, [monthCursor]);
 
-  const filteredLessons = useMemo(() => {
-    const now = new Date(2026, 7, 26);
-    const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    return lessons.filter((lesson) => {
-      const date = new Date(`${lesson.date}T12:00:00`);
-      if (range === '今天') return lesson.date === '2026-08-26';
-      if (range === '本周') return date >= startOfWeek && date <= now;
+  const completedLessons = useMemo(() => lessons.filter((lesson) => lesson.status === '已完成'), [lessons]);
+  const rangeLessons = useMemo(() => {
+    const startOfWeek = weekStartFor(demoToday);
+    return completedLessons.filter((lesson) => {
+      if (range === '今天') return lesson.date === demoToday;
+      if (range === '本周') return lesson.date >= dateFrom(startOfWeek, 0) && lesson.date <= dateFrom(startOfWeek, 6);
       if (range === '本月') return lesson.date.startsWith('2026-08');
       if (range === '本年') return lesson.date.startsWith('2026');
       return true;
-    }).filter((lesson) => lesson.status === '已完成');
-  }, [lessons, range]);
+    });
+  }, [completedLessons, range]);
 
-  const stats = useMemo(() => {
-    const receivable = filteredLessons.reduce((sum, item) => sum + item.fee, 0);
-    const paid = filteredLessons.filter((item) => item.payment === '已收款').reduce((sum, item) => sum + item.fee, 0);
-    const minutes = filteredLessons.reduce((sum, item) => sum + item.duration, 0);
-    return { receivable, paid, unpaid: receivable - paid, hours: minutes / 60, count: filteredLessons.length, hourly: minutes ? receivable / (minutes / 60) : 0 };
-  }, [filteredLessons]);
+  const statPeriods = useMemo<StatPeriod[]>(() => {
+    if (range === '今天') return [{ key: demoToday, label: '今天', detail: '8月26日', start: demoToday, end: demoToday }];
+    if (range === '本周') {
+      const start = weekStartFor(demoToday);
+      return weekDays.map((day, index) => {
+        const date = dateFrom(start, index);
+        return { key: date, label: `周${day}`, detail: formatShortDate(date), start: date, end: date };
+      });
+    }
+    if (range === '本月') {
+      return Array.from({ length: 5 }, (_, index) => {
+        const startDay = index * 7 + 1;
+        const endDay = Math.min(31, startDay + 6);
+        return { key: `2026-08-${String(startDay).padStart(2, '0')}`, label: `${startDay}–${endDay}`, detail: `8月${startDay}日–8月${endDay}日`, start: localDate(2026, 7, startDay), end: localDate(2026, 7, endDay) };
+      });
+    }
+    if (range === '本年') {
+      return Array.from({ length: 12 }, (_, index) => ({ key: `2026-${String(index + 1).padStart(2, '0')}`, label: `${index + 1}月`, detail: `2026年${index + 1}月`, start: localDate(2026, index, 1), end: localDate(2026, index + 1, 0) }));
+    }
+    const monthKeys = [...new Set(completedLessons.map((lesson) => lesson.date.slice(0, 7)))].sort();
+    return monthKeys.map((key) => {
+      const [year, month] = key.split('-').map(Number);
+      return { key, label: `${month}月`, detail: `${year}年${month}月`, start: `${key}-01`, end: localDate(year, month, 0) };
+    });
+  }, [completedLessons, range]);
+
+  useEffect(() => {
+    const defaultIndex = range === '本周' ? 2 : range === '本月' ? 3 : range === '本年' ? 7 : Math.max(0, statPeriods.length - 1);
+    setActiveStatPeriodIndex(Math.min(defaultIndex, Math.max(0, statPeriods.length - 1)));
+  }, [range, statPeriods.length]);
+
+  const safeStatPeriodIndex = Math.min(activeStatPeriodIndex, Math.max(0, statPeriods.length - 1));
+  const activeStatPeriod = statPeriods[safeStatPeriodIndex];
+  const periodLessons = useMemo(() => activeStatPeriod ? completedLessons.filter((lesson) => lesson.date >= activeStatPeriod.start && lesson.date <= activeStatPeriod.end) : [], [activeStatPeriod, completedLessons]);
+  const stats = useMemo(() => calculateLessonStats(periodLessons), [periodLessons]);
+  const rangeStats = useMemo(() => calculateLessonStats(rangeLessons), [rangeLessons]);
+  const periodValues = statPeriods.map((period) => calculateLessonStats(completedLessons.filter((lesson) => lesson.date >= period.start && lesson.date <= period.end)).receivable);
+  const maxPeriodValue = Math.max(1, ...periodValues);
+  const previousPeriodValue = safeStatPeriodIndex > 0 ? periodValues[safeStatPeriodIndex - 1] : 0;
+  const periodChange = previousPeriodValue ? Math.round((stats.receivable - previousPeriodValue) / previousPeriodValue * 100) : stats.receivable ? 100 : 0;
+
+  const contributionData = useMemo(() => students.map((student) => {
+    const items = periodLessons.filter((lesson) => lesson.studentId === student.id);
+    const paid = items.filter((lesson) => lesson.payment === '已收款').reduce((sum, lesson) => sum + lesson.fee, 0);
+    const hours = items.reduce((sum, lesson) => sum + lesson.duration, 0) / 60;
+    return { student, income: paid, hours, lessons: items.length };
+  }).filter((item) => item.income || item.hours || item.lessons), [periodLessons, students]);
+  const contributionTotal = Math.max(0, contributionData.reduce((sum, item) => sum + item[contributionMetric], 0));
+
+  useEffect(() => {
+    const node = incomeValueRef.current;
+    if (!node || tab !== 'stats') return;
+    const targetValue = stats.receivable;
+    const startValue = previousIncomeRef.current;
+    const mm = gsap.matchMedia();
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      const value = { amount: startValue };
+      gsap.killTweensOf(value);
+      gsap.to(value, { amount: targetValue, duration: 0.28, ease: 'power3.out', onUpdate: () => { node.textContent = cnMoney.format(Math.round(value.amount)); } });
+    });
+    mm.add('(prefers-reduced-motion: reduce)', () => { node.textContent = cnMoney.format(targetValue); });
+    previousIncomeRef.current = targetValue;
+    return () => mm.revert();
+  }, [stats.receivable, tab]);
 
   function goMonth(offset: number) {
     const next = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + offset, 1);
@@ -389,7 +487,8 @@ export default function Home() {
   }
 
   function openNewLesson() {
-    setLessonDraft(emptyLesson(students[0], selectedDate));
+    const student = students.find((item) => tutoringStatusFor(item) === 'active') || students[0];
+    setLessonDraft(emptyLesson(student, selectedDate));
   }
 
   function openNewScheduleEntry() {
@@ -400,7 +499,8 @@ export default function Home() {
     if (!lessonDraft) return;
     const next = complete ? { ...lessonDraft, status: '已完成' as LessonStatus } : lessonDraft;
     if (next.scheduleMode === 'weekly') {
-      const dates = recurringDates(next.repeatStart || next.date, next.repeatEnd || next.date, next.repeatWeekdays || []);
+      const selectedStudent = students.find((student) => student.id === next.studentId);
+      const dates = recurringDates(next.repeatStart || next.date, next.repeatEnd || next.date, next.repeatWeekdays || []).filter((date) => studentCanAttendOn(selectedStudent, date));
       const seriesId = next.seriesId || `series-${Date.now()}`;
       const generated = dates.map((date) => ({ ...next, id: `${seriesId}-${date}`, date, seriesId }));
       const withoutDraft = lessons.filter((item) => item.id !== next.id);
@@ -458,12 +558,14 @@ export default function Home() {
   }
 
   function openNewStudent() {
-    setStudentDraft({ id: `student-${Date.now()}`, name: '', nickname: '', grade: '一年级', school: '', parentName: '', parentPhone: '', subjects: ['数学'], defaultDuration: 90, defaultFee: 300, notes: '', locationShort: '', fullAddress: '', commuteMinutes: 0, color: studentColorPalette[students.length % studentColorPalette.length] });
+    setStudentDraft({ id: `student-${Date.now()}`, name: '', nickname: '', grade: '一年级', school: '', parentName: '', parentPhone: '', subjects: ['数学'], defaultDuration: 90, defaultFee: 300, notes: '', locationShort: '', fullAddress: '', commuteMinutes: 0, color: studentColorPalette[students.length % studentColorPalette.length], tutoringStatus: 'active', tutoringStartDate: demoToday, tutoringEndDate: '' });
   }
 
   function saveStudent() {
     if (!studentDraft || !studentDraft.name.trim()) return;
-    setStudents((items) => items.some((item) => item.id === studentDraft.id) ? items.map((item) => item.id === studentDraft.id ? studentDraft : item) : [...items, studentDraft]);
+    const normalizedStatus: TutoringStatus = studentDraft.tutoringEndDate && studentDraft.tutoringEndDate < demoToday ? 'ended' : (studentDraft.tutoringStatus || 'active');
+    const nextStudent = { ...studentDraft, tutoringStatus: normalizedStatus };
+    setStudents((items) => items.some((item) => item.id === nextStudent.id) ? items.map((item) => item.id === nextStudent.id ? nextStudent : item) : [...items, nextStudent]);
     setStudentDraft(null); setSavedToastMessage('学生档案已保存'); setSavedToast(true); window.setTimeout(() => setSavedToast(false), 1800);
   }
 
@@ -587,15 +689,22 @@ export default function Home() {
         {tab === 'students' && (
           <div className="view-content">
             {activeStudent ? <StudentDetail student={activeStudent} lessons={lessons.filter((item) => item.studentId === activeStudent.id)} onBack={() => setActiveStudentId(null)} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} onEdit={() => setStudentDraft({ ...activeStudent })} archiveUnlocked={archiveUnlocked} onRequestUnlock={() => setPinDialogOpen(true)} onLock={() => setArchiveUnlocked(false)} onArchiveChange={(changes) => updateStudentArchive(activeStudent.id, changes)} /> : <>
+              <div className="student-status-filter" role="group" aria-label="学生授课状态筛选">
+                {([
+                  { value: 'active' as const, label: '正在授课', count: students.filter((student) => tutoringStatusFor(student) === 'active').length },
+                  { value: 'ended' as const, label: '已结课', count: students.filter((student) => tutoringStatusFor(student) === 'ended').length },
+                  { value: 'all' as const, label: '全部学生', count: students.length },
+                ]).map((item) => <button type="button" key={item.value} className={studentStatusFilter === item.value ? 'selected' : ''} aria-pressed={studentStatusFilter === item.value} onClick={() => setStudentStatusFilter(item.value)}><span>{item.label}</span><b>{item.count}</b></button>)}
+              </div>
               <label className="search-field"><Search size={18} aria-hidden="true" /><span className="sr-only">搜索学生</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学生姓名" /></label>
               <div className="student-list">
-                {students.filter((student) => `${student.name}${student.nickname}`.toLowerCase().includes(query.toLowerCase())).map((student) => {
+                {students.filter((student) => (studentStatusFilter === 'all' || tutoringStatusFor(student) === studentStatusFilter) && `${student.name}${student.nickname}`.toLowerCase().includes(query.toLowerCase())).map((student) => {
                   const history = lessons.filter((item) => item.studentId === student.id && item.status === '已完成');
                   const minutes = history.reduce((sum, item) => sum + item.duration, 0);
                   const latest = [...history].sort((a, b) => b.date.localeCompare(a.date))[0];
                   return <button className="student-card" style={{ borderLeftColor: studentColor(student) }} key={student.id} onClick={() => setActiveStudentId(student.id)}>
                     <div className="avatar large" style={avatarStyle(student)}>{student.nickname?.[0] || student.name[0]}</div>
-                    <div className="student-main"><div><h3>{student.nickname || student.name}</h3><p>{student.name} · {student.grade}{student.locationShort ? ` · ${student.locationShort}` : ''}</p></div><ChevronRight size={18} aria-hidden="true" /></div>
+                    <div className="student-main"><div><div className="student-name-line"><h3>{student.nickname || student.name}</h3><span className={`tutoring-status-chip ${tutoringStatusFor(student)}`}>{tutoringStatusLabel(student)}</span></div><p>{student.name} · {student.grade}{student.locationShort ? ` · ${student.locationShort}` : ''}</p><small className="tutoring-period-line">{student.tutoringStartDate ? `${formatShortDate(student.tutoringStartDate)}开始` : '开始日期待补充'}{student.tutoringEndDate ? ` · ${formatShortDate(student.tutoringEndDate)}结束` : ' · 持续中'}</small></div><ChevronRight size={18} aria-hidden="true" /></div>
                     <div className="student-metrics"><span><strong>{history.length}</strong> 次课</span><span><strong>{(minutes / 60).toFixed(1)}</strong> 小时</span><span><strong>{latest ? formatShortDate(latest.date) : '—'}</strong> 最近</span></div>
                   </button>;
                 })}
@@ -609,9 +718,17 @@ export default function Home() {
             <div className="range-switcher" role="group" aria-label="统计时间范围" style={{ '--range-index': ranges.indexOf(range) } as React.CSSProperties}><i className="range-active-indicator" aria-hidden="true" />{ranges.map((item) => <button key={item} className={range === item ? 'active' : ''} onClick={() => setRange(item)} aria-pressed={range === item}>{item}</button>)}</div>
             <div className="stats-content" ref={statsContentRef} aria-live="polite">
             <section className="income-hero">
-              <p>{range}应收</p><strong>{cnMoney.format(stats.receivable)}</strong>
-              <span className="trend"><BarChart3 size={15} /> 较上月 +12%</span>
-              <div className="sparkline" aria-label="近四周收入趋势"><i style={{ height: '38%' }} /><i style={{ height: '58%' }} /><i style={{ height: '47%' }} /><i style={{ height: '82%' }} /><i style={{ height: '68%' }} /><i style={{ height: '100%' }} /></div>
+              <div className="income-period-heading"><div><p>{activeStatPeriod?.detail || range}应收</p><strong ref={incomeValueRef}>{cnMoney.format(stats.receivable)}</strong></div><small>{range}合计 {cnMoney.format(rangeStats.receivable)}</small></div>
+              <span className={`trend ${periodChange < 0 ? 'down' : ''}`}><BarChart3 size={15} />较上一期间 {periodChange >= 0 ? '+' : ''}{periodChange}%</span>
+              <div className="period-chart-scroll">
+                <div className="period-chart" role="group" aria-label={`${range}收入期间选择`} style={{ '--period-count': statPeriods.length } as React.CSSProperties}>
+                  {statPeriods.map((period, index) => {
+                    const value = periodValues[index] || 0;
+                    const selected = index === safeStatPeriodIndex;
+                    return <button type="button" className={`period-bar-button ${selected ? 'selected' : ''}`} key={period.key} aria-pressed={selected} aria-label={`${period.detail}，应收${cnMoney.format(value)}`} onClick={() => setActiveStatPeriodIndex(index)}><span className="period-bar-track"><i className="period-bar-fill" style={{ transform: `scaleY(${value / maxPeriodValue})` }} /></span><small>{period.label}</small><b>{value ? `${Math.round(value / 100) / 10}k` : '0'}</b></button>;
+                  })}
+                </div>
+              </div>
             </section>
             <div className="metric-grid">
               <Metric icon={<BookOpen />} label="完成课程" value={`${stats.count} 节`} />
@@ -624,12 +741,19 @@ export default function Home() {
               <div className="payment-split"><span>已收 <strong>{cnMoney.format(stats.paid)}</strong></span><span>待收 <strong>{cnMoney.format(stats.unpaid)}</strong></span></div>
             </section>
             <section className="contribution-card">
-              <div className="section-heading compact"><div><p className="eyebrow">Students</p><h3>学生贡献</h3></div></div>
-              {students.map((student) => {
-                const amount = filteredLessons.filter((item) => item.studentId === student.id).reduce((sum, item) => sum + item.fee, 0);
-                const max = Math.max(1, ...students.map((person) => filteredLessons.filter((item) => item.studentId === person.id).reduce((sum, item) => sum + item.fee, 0)));
-                return <div className="contribution-row" key={student.id}><div className="avatar small" style={avatarStyle(student)}>{student.nickname?.[0] || student.name[0]}</div><div><span>{student.nickname || student.name}<strong>{cnMoney.format(amount)}</strong></span><div className="mini-track"><i style={{ transform: `scaleX(${amount / max})`, backgroundColor: studentColor(student) }} /></div></div></div>;
-              })}
+              <div className="section-heading compact"><div><p className="eyebrow">Contribution</p><h3>学生贡献占比</h3><small>{activeStatPeriod?.detail || range}</small></div></div>
+              <div className="contribution-switch" role="group" aria-label="学生贡献指标">
+                {([{ value: 'income' as const, label: '收款' }, { value: 'hours' as const, label: '课时' }, { value: 'lessons' as const, label: '课数' }]).map((item) => <button type="button" key={item.value} className={contributionMetric === item.value ? 'selected' : ''} aria-pressed={contributionMetric === item.value} onClick={() => setContributionMetric(item.value)}>{item.label}</button>)}
+              </div>
+              {contributionData.length ? <>
+                <div className="contribution-stack" role="img" aria-label={contributionData.map((item) => `${item.student.nickname || item.student.name}${contributionTotal ? Math.round(item[contributionMetric] / contributionTotal * 100) : 0}%`).join('，')}>{contributionData.map((item) => <i key={item.student.id} style={{ width: `${contributionTotal ? item[contributionMetric] / contributionTotal * 100 : 0}%`, backgroundColor: studentColor(item.student) }} />)}</div>
+                <div className="contribution-legend">{contributionData.map((item) => {
+                  const value = item[contributionMetric];
+                  const percent = contributionTotal ? Math.round(value / contributionTotal * 100) : 0;
+                  const display = contributionMetric === 'income' ? cnMoney.format(value) : contributionMetric === 'hours' ? `${value.toFixed(1)} h` : `${value} 节`;
+                  return <div className="contribution-row" key={item.student.id}><div className="avatar small" style={avatarStyle(item.student)}>{item.student.nickname?.[0] || item.student.name[0]}</div><div><span><span><i style={{ backgroundColor: studentColor(item.student) }} />{item.student.nickname || item.student.name}</span><strong>{display} · {percent}%</strong></span><div className="mini-track"><i style={{ transform: `scaleX(${percent / 100})`, backgroundColor: studentColor(item.student) }} /></div></div></div>;
+                })}</div>
+              </> : <p className="contribution-empty">这个期间还没有已完成课程。</p>}
             </section>
             </div>
           </div>
@@ -743,7 +867,7 @@ function WeekCalendar({ selectedDate, lessons, scheduleEntries, students, onSele
 function WeekTimeline({ compact = false, days, lessons, scheduleEntries, students, selectedDate, onSelectDate, onLesson, onScheduleEntry }: { compact?: boolean; days: { label: string; date: string }[]; lessons: Lesson[]; scheduleEntries: ScheduleEntry[]; students: Record<string, Student>; selectedDate: string; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void; onScheduleEntry: (entry: ScheduleEntry) => void }) {
   const startHour = 8;
   const endHour = 22;
-  const rowHeight = compact ? 20 : 64;
+  const rowHeight = compact ? 28 : 64;
   const totalHeight = (endHour - startHour) * rowHeight;
   const hourLines = Array.from({ length: endHour - startHour + 1 }, (_, index) => index + startHour);
   const timeLabels = compact ? hourLines.filter((hour) => (hour - startHour) % 2 === 0) : hourLines;
@@ -803,8 +927,9 @@ function StudentDetail({ student, lessons, onBack, onLesson, onEdit, archiveUnlo
   const income = completed.reduce((sum, item) => sum + item.fee, 0);
   return <div className="student-detail">
     <div className="detail-actions"><button className="back-button" onClick={onBack}><ArrowLeft size={18} />全部学生</button><button className="text-button" onClick={onEdit}>编辑资料</button></div>
-    <section className="student-hero"><div className="avatar xlarge" style={avatarStyle(student)}>{student.nickname?.[0] || student.name[0]}</div><div><p className="eyebrow">{student.school}</p><h3>{student.nickname || student.name}</h3><p>{student.name} · {student.grade} · {student.subjects.join(' / ')}</p></div></section>
+    <section className="student-hero"><div className="avatar xlarge" style={avatarStyle(student)}>{student.nickname?.[0] || student.name[0]}</div><div><p className="eyebrow">{student.school}</p><div className="student-name-line"><h3>{student.nickname || student.name}</h3><span className={`tutoring-status-chip ${tutoringStatusFor(student)}`}>{tutoringStatusLabel(student)}</span></div><p>{student.name} · {student.grade} · {student.subjects.join(' / ')}</p></div></section>
     <div className="summary-strip"><span><strong>{completed.length}</strong>次课程</span><span><strong>{hours.toFixed(1)}</strong>小时</span><span><strong>{cnMoney.format(income)}</strong>累计</span></div>
+    <section className="tutoring-period-card"><div><CalendarRange size={19} aria-hidden="true" /></div><div><strong>授课周期</strong><p>{student.tutoringStartDate ? `${formatShortDate(student.tutoringStartDate)}开始` : '开始日期待补充'}{student.tutoringEndDate ? `，${formatShortDate(student.tutoringEndDate)}结课` : '，目前持续授课中'}</p><small>{tutoringStatusFor(student) === 'active' ? '后续每周排课会自动保留在授课周期内。' : '已停止生成结课日期之后的每周课程。'}</small></div></section>
     <section className="location-card">
       <div className="location-icon" style={{ backgroundColor: colorWash(studentColor(student), 0.18), color: studentColor(student) }}><MapPin size={19} aria-hidden="true" /></div>
       <div><div className="location-card-heading"><strong>上课地点</strong><span style={{ backgroundColor: studentColor(student), color: contrastText(studentColor(student)) }}>{student.locationShort || '地点待填写'}</span></div><p>{student.fullAddress || '还没有填写详细地址。'}</p><small><Clock3 size={13} aria-hidden="true" />{student.commuteMinutes ? `单程通勤约 ${student.commuteMinutes} 分钟` : '还没有填写通勤时间'}</small></div>
@@ -882,7 +1007,8 @@ function LessonEditor({ draft, students, isNew, onChange, onClose, onSave, onDel
   const fileRef = useRef<HTMLInputElement>(null);
   const [scheduleError, setScheduleError] = useState('');
   const isWeekly = draft.scheduleMode === 'weekly';
-  const repeatDates = recurringDates(draft.repeatStart || draft.date, draft.repeatEnd || draft.date, draft.repeatWeekdays || []);
+  const selectedStudent = students.find((student) => student.id === draft.studentId);
+  const repeatDates = recurringDates(draft.repeatStart || draft.date, draft.repeatEnd || draft.date, draft.repeatWeekdays || []).filter((date) => studentCanAttendOn(selectedStudent, date));
   async function addPhotos(files: FileList | null) {
     if (!files?.length) return;
     const encoded = await Promise.all(Array.from(files).slice(0, 4).map(compressPhoto));
@@ -940,7 +1066,7 @@ function LessonEditor({ draft, students, isNew, onChange, onClose, onSave, onDel
             <button type="button" className={isWeekly ? 'selected' : ''} aria-pressed={isWeekly} onClick={() => setScheduleMode('weekly')}><Repeat2 size={16} aria-hidden="true" />每周重复</button>
           </div>
           <div className="form-grid two">
-            <label><span>学生</span><select value={draft.studentId} onChange={(event) => { const student = students.find((item) => item.id === event.target.value); onChange({ ...draft, studentId: event.target.value, fee: student?.defaultFee ?? draft.fee, duration: student?.defaultDuration ?? draft.duration, subject: student?.subjects[0] || draft.subject }); }}>{students.map((student) => <option key={student.id} value={student.id}>{student.nickname || student.name}</option>)}</select></label>
+            <label><span>学生</span><select value={draft.studentId} onChange={(event) => { const student = students.find((item) => item.id === event.target.value); onChange({ ...draft, studentId: event.target.value, fee: student?.defaultFee ?? draft.fee, duration: student?.defaultDuration ?? draft.duration, subject: student?.subjects[0] || draft.subject }); }}>{students.map((student) => <option key={student.id} value={student.id} disabled={isNew && tutoringStatusFor(student) === 'ended'}>{student.nickname || student.name}{tutoringStatusFor(student) === 'ended' ? '（已结课）' : ''}</option>)}</select></label>
             <label><span>科目</span><select value={draft.subject} onChange={(event) => onChange({ ...draft, subject: event.target.value as Subject })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label>
             <label><span>状态</span><select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as LessonStatus })}>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
             {!isWeekly && <label><span>上课日期</span><input type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value })} /></label>}
@@ -956,7 +1082,7 @@ function LessonEditor({ draft, students, isNew, onChange, onClose, onSave, onDel
               const selected = (draft.repeatWeekdays || []).includes(value);
               return <button type="button" key={day} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onChange({ ...draft, repeatWeekdays: selected ? (draft.repeatWeekdays || []).filter((item) => item !== value) : [...(draft.repeatWeekdays || []), value].sort() })}><small>周</small>{day}<Check size={13} aria-hidden="true" /></button>;
             })}</div></fieldset>
-            <p className="repeat-summary"><Repeat2 size={14} aria-hidden="true" />当前设置将生成 <strong>{repeatDates.length}</strong> 节课，之后每节都可以单独修改。</p>
+            <p className="repeat-summary"><Repeat2 size={14} aria-hidden="true" />授课周期内将生成 <strong>{repeatDates.length}</strong> 节课；超出开始或结课日期的课程会自动跳过。</p>
           </>}
           <div className="form-grid two time-grid">
             <label><span>开始时间</span><input type="time" value={draft.startTime} onChange={(event) => { const startTime = event.target.value; onChange({ ...draft, startTime, duration: durationFromTimes(startTime, draft.endTime, draft.duration) }); }} /></label>
@@ -1047,6 +1173,18 @@ function StudentEditor({ draft, onChange, onClose, onSave }: { draft: Student; o
           <label><span>默认时长（分钟）</span><input type="number" inputMode="numeric" min="0" value={draft.defaultDuration} onChange={(event) => onChange({ ...draft, defaultDuration: Number(event.target.value) })} /></label>
           <label><span>默认课费（元）</span><input type="number" inputMode="decimal" min="0" value={draft.defaultFee} onChange={(event) => onChange({ ...draft, defaultFee: Number(event.target.value) })} /></label>
         </div>
+      </section>
+      <section className="form-section">
+        <div className="form-section-heading"><span><CalendarRange size={17} aria-hidden="true" /></span><div><strong>授课状态与周期</strong><small>用于区分当前学生，并限制每周自动排课</small></div></div>
+        <fieldset className="tutoring-status-field"><legend>授课状态</legend><div className="tutoring-status-switch" role="group" aria-label="授课状态">
+          <button type="button" className={tutoringStatusFor(draft) === 'active' ? 'selected active' : ''} aria-pressed={tutoringStatusFor(draft) === 'active'} onClick={() => onChange({ ...draft, tutoringStatus: 'active', tutoringEndDate: draft.tutoringEndDate && draft.tutoringEndDate >= demoToday ? draft.tutoringEndDate : '' })}><span />正在授课</button>
+          <button type="button" className={tutoringStatusFor(draft) === 'ended' ? 'selected ended' : ''} aria-pressed={tutoringStatusFor(draft) === 'ended'} onClick={() => onChange({ ...draft, tutoringStatus: 'ended', tutoringEndDate: draft.tutoringEndDate || demoToday })}><span />已结课</button>
+        </div></fieldset>
+        <div className="form-grid two tutoring-date-grid">
+          <label><span>开始授课日期</span><input type="date" value={draft.tutoringStartDate || ''} onChange={(event) => onChange({ ...draft, tutoringStartDate: event.target.value })} /></label>
+          <label><span>结课日期（可选）</span><input type="date" min={draft.tutoringStartDate || undefined} value={draft.tutoringEndDate || ''} onChange={(event) => onChange({ ...draft, tutoringEndDate: event.target.value, tutoringStatus: event.target.value && event.target.value < demoToday ? 'ended' : draft.tutoringStatus })} /></label>
+        </div>
+        <p className="tutoring-period-hint">每周重复课程只会生成在这个日期区间内；已结课学生不会被默认选入新的排课。</p>
       </section>
       <section className="form-section">
         <div className="form-section-heading"><span><MapPin size={17} aria-hidden="true" /></span><div><strong>上课地点</strong><small>课表只显示简称，详细地址留在档案内</small></div></div>
