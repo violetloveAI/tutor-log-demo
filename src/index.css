@@ -90,6 +90,19 @@ button:active { transform: scale(.97); }
 .filter-chips > button > svg { display: none; }
 .filter-chips > button.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .filter-chips > button.selected > svg { display: block; }
+.schedule-visibility-group { padding-top: 4px; border-top: 1px solid var(--line); }
+.schedule-visibility-toggle { width: 100%; min-height: 62px; display: grid; grid-template-columns: 36px minmax(0, 1fr) 42px; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--line); border-radius: 15px; background: var(--card); color: var(--muted); cursor: pointer; text-align: left; }
+.schedule-visibility-toggle > span { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px 4px 11px 4px; background: var(--soft); color: var(--muted); }
+.schedule-visibility-toggle > div { min-width: 0; }
+.schedule-visibility-toggle strong, .schedule-visibility-toggle small { display: block; }
+.schedule-visibility-toggle strong { color: var(--ink); font-size: 10px; }
+.schedule-visibility-toggle small { margin-top: 4px; font-size: 8px; line-height: 1.45; }
+.schedule-visibility-toggle > i { width: 42px; height: 24px; position: relative; display: block; border-radius: 100px; background: var(--line); transition: background 180ms var(--ease-out); }
+.schedule-visibility-toggle > i > b { position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--card); box-shadow: 0 2px 5px rgba(20,23,20,.15); transform: translateX(0); transition: transform 180ms var(--ease-out); }
+.schedule-visibility-toggle.selected { border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); background: var(--accent-soft); color: var(--accent); }
+.schedule-visibility-toggle.selected > span { background: var(--accent); color: var(--surface); }
+.schedule-visibility-toggle.selected > i { background: var(--accent); }
+.schedule-visibility-toggle.selected > i > b { transform: translateX(18px); }
 .calendar-filters > p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.5; }
 .calendar-heading { gap: 8px; margin-bottom: 18px; }
 .calendar-heading > p { flex: 1; color: var(--muted); font-size: 11px; margin: 0; text-align: center; }
@@ -326,7 +339,7 @@ button:active { transform: scale(.97); }
 .range-active-indicator { position: absolute; z-index: 0; left: 4px; top: 4px; bottom: 4px; width: calc((100% - 24px) / 5); border-radius: 10px; background: var(--card); box-shadow: 0 2px 8px rgba(36,39,34,.07); transform: translateX(calc(var(--range-index) * (100% + 4px))); transition: transform 240ms var(--ease-in-out); pointer-events: none; }
 .range-switcher button { position: relative; z-index: 1; min-width: 52px; height: 38px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 700; cursor: pointer; transition: color 180ms var(--ease-out), transform 140ms var(--ease-out); }
 .range-switcher button.active { color: var(--ink); }
-.income-hero { position: relative; min-height: 338px; padding: 22px; border-radius: 28px; overflow: hidden; background: #273128; color: white; }
+.income-hero { position: relative; min-height: 394px; padding: 22px; border-radius: 28px; overflow: hidden; background: #273128; color: white; }
 .income-hero::after { content: ''; position: absolute; width: 240px; height: 240px; right: -80px; top: -110px; border: 1px solid rgba(255,255,255,.09); border-radius: 50%; box-shadow: 0 0 0 44px rgba(255,255,255,.025); }
 .income-hero p { margin: 0 0 7px; color: #aeb9ab; font-size: 11px; }
 .income-period-heading { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
@@ -335,15 +348,24 @@ button:active { transform: scale(.97); }
 .income-period-heading > small { flex: none; max-width: 118px; padding: 7px 9px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: rgba(255,255,255,.06); color: #cbd4c8; font-size: 8px; line-height: 1.45; text-align: right; }
 .trend { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; padding: 6px 9px; border-radius: 100px; background: rgba(255,255,255,.09); color: #ced6cc; font-size: 9px; }
 .trend.down { color: #e7c4bc; }
-.period-chart-scroll { position: absolute; z-index: 1; left: 14px; right: 14px; bottom: 13px; overflow-x: auto; padding: 4px 0 1px; scrollbar-width: none; }
+.period-chart-meta { position: absolute; z-index: 2; left: 22px; right: 18px; top: 116px; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #aeb9ab; font-size: 8px; }
+.period-chart-meta > span { max-width: 190px; line-height: 1.45; }
+.period-chart-meta > div { display: flex; gap: 4px; }
+.period-chart-meta button { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; background: rgba(255,255,255,.06); color: #dce6d8; cursor: pointer; }
+.period-chart-meta button:disabled { cursor: not-allowed; opacity: .35; }
+.period-chart-scroll { position: absolute; z-index: 1; left: 14px; right: 14px; bottom: 13px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: calc(50% - 28px); touch-action: pan-x; padding: 4px 50% 1px; scrollbar-width: none; }
 .period-chart-scroll::-webkit-scrollbar { display: none; }
-.period-chart { min-width: max(100%, calc(var(--period-count) * 48px)); height: 146px; display: flex; align-items: stretch; gap: 4px; }
-.period-bar-button { min-width: 44px; flex: 1; display: grid; grid-template-rows: 96px 20px 18px; align-items: end; justify-items: center; gap: 0; padding: 0 2px; border: 0; border-radius: 11px; background: transparent; color: #aeb9ab; cursor: pointer; }
-.period-bar-track { width: min(22px, 68%); height: 88px; display: flex; align-items: flex-end; overflow: hidden; border-radius: 7px 7px 3px 3px; background: rgba(255,255,255,.065); }
+.period-chart { width: max-content; height: 174px; display: flex; align-items: stretch; gap: 5px; }
+.period-bar-button { width: 54px; min-width: 54px; flex: 0 0 54px; display: grid; grid-template-rows: 108px 30px 20px; align-items: end; justify-items: center; gap: 0; scroll-snap-align: center; padding: 0 2px; border: 0; border-radius: 11px; background: transparent; color: #aeb9ab; cursor: pointer; }
+.period-chart[data-unit='周'] .period-bar-button { width: 72px; min-width: 72px; flex-basis: 72px; }
+.period-chart[data-unit='月'] .period-bar-button, .period-chart[data-unit='季'] .period-bar-button { width: 68px; min-width: 68px; flex-basis: 68px; }
+.period-chart[data-unit='年'] .period-bar-button { width: 62px; min-width: 62px; flex-basis: 62px; }
+.period-bar-track { width: min(24px, 68%); height: 100px; display: flex; align-items: flex-end; overflow: hidden; border-radius: 7px 7px 3px 3px; background: rgba(255,255,255,.065); }
 .period-bar-fill { width: 100%; height: 100%; display: block; border-radius: inherit; background: #768a74; transform-origin: bottom; transition: transform 240ms var(--ease-out), background 180ms var(--ease-out); }
-.period-bar-button small { max-width: 100%; overflow: hidden; font-family: var(--font-numeric); font-size: 8px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+.period-bar-button small { max-width: 100%; font-family: var(--font-numeric); font-size: 9px; font-weight: 720; line-height: 1.2; text-align: center; white-space: normal; }
 .period-bar-button b { color: #879584; font-family: var(--font-numeric); font-size: 7px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .period-bar-button.selected { background: rgba(255,255,255,.07); color: #fff; }
+.period-bar-button.current:not(.selected) { box-shadow: inset 0 -2px #8fa18c; }
 .period-bar-button.selected .period-bar-fill { background: #dce6d8; }
 .period-bar-button.selected b { color: #dce6d8; }
 .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -542,8 +564,10 @@ input:focus, select:focus, textarea:focus { border-color: color-mix(in srgb, var
   .status { padding: 6px 7px; }
   .metric-card { padding: 12px 10px; }
   .metric-card strong { font-size: 12px; }
-  .income-hero { min-height: 350px; padding: 20px 18px; }
+  .income-hero { min-height: 410px; padding: 20px 18px; }
   .income-period-heading > small { max-width: 104px; }
+  .period-chart-meta { left: 18px; right: 14px; }
+  .period-chart-meta > span { max-width: 178px; }
   .period-chart-scroll { left: 10px; right: 10px; }
   .contribution-card, .payment-card { padding: 17px; }
   .student-status-filter button { font-size: 9px; }

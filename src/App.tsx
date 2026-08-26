@@ -14,14 +14,14 @@ type LessonStatus = '已预约' | '已完成' | '已取消';
 type Mastery = '已掌握' | '需要巩固' | '未掌握';
 type Payment = '已收款' | '待收款';
 type Tab = 'calendar' | 'students' | 'stats';
-type Range = '今天' | '本周' | '本月' | '本年' | '全部';
+type StatUnit = '日' | '周' | '月' | '季' | '年';
 type CalendarMode = 'month' | 'week';
 type ScheduleMode = 'single' | 'weekly';
 type ScheduleEntryKind = 'todo' | 'reminder';
 type TutoringStatus = 'active' | 'ended';
 type StudentStatusFilter = 'all' | TutoringStatus;
 type ContributionMetric = 'income' | 'hours' | 'lessons';
-type StatPeriod = { key: string; label: string; detail: string; start: string; end: string };
+type StatPeriod = { key: string; label: string; detail: string; start: string; end: string; current: boolean };
 
 type Student = {
   id: string; name: string; nickname: string; grade: string; school: string;
@@ -114,7 +114,7 @@ const initialScheduleEntries: ScheduleEntry[] = [
 const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
 const subjects: Subject[] = ['语文', '数学', '英语'];
 const statusOptions: LessonStatus[] = ['已预约', '已完成', '已取消'];
-const ranges: Range[] = ['今天', '本周', '本月', '本年', '全部'];
+const statUnits: StatUnit[] = ['日', '周', '月', '季', '年'];
 const cnMoney = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 });
 const demoToday = '2026-08-26';
 
@@ -142,6 +142,62 @@ function calculateLessonStats(items: Lesson[]) {
   const paid = items.filter((item) => item.payment === '已收款').reduce((sum, item) => sum + item.fee, 0);
   const minutes = items.reduce((sum, item) => sum + item.duration, 0);
   return { receivable, paid, unpaid: receivable - paid, hours: minutes / 60, count: items.length, hourly: minutes ? receivable / (minutes / 60) : 0 };
+}
+
+function buildStatPeriods(unit: StatUnit): StatPeriod[] {
+  const today = new Date(`${demoToday}T12:00:00`);
+  const containsToday = (start: string, end: string) => demoToday >= start && demoToday <= end;
+
+  if (unit === '日') {
+    return Array.from({ length: 181 }, (_, index) => {
+      const date = dateFrom(today, index - 90);
+      const [, month, day] = date.split('-').map(Number);
+      return { key: date, label: `${month}/${day}`, detail: `${date.slice(0, 4)}年${month}月${day}日`, start: date, end: date, current: date === demoToday };
+    });
+  }
+
+  if (unit === '周') {
+    const currentStart = weekStartFor(demoToday);
+    return Array.from({ length: 33 }, (_, index) => {
+      const start = dateFrom(currentStart, (index - 16) * 7);
+      const end = dateFrom(new Date(`${start}T12:00:00`), 6);
+      const [, startMonth, startDay] = start.split('-').map(Number);
+      const [, endMonth, endDay] = end.split('-').map(Number);
+      return { key: start, label: `${startMonth}/${startDay}–${endMonth}/${endDay}`, detail: `${start.slice(0, 4)}年${startMonth}月${startDay}日–${endMonth}月${endDay}日`, start, end, current: containsToday(start, end) };
+    });
+  }
+
+  if (unit === '月') {
+    const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    return Array.from({ length: 37 }, (_, index) => {
+      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + index - 18, 1);
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const start = localDate(year, month, 1);
+      const end = localDate(year, month + 1, 0);
+      return { key: start, label: `${year}/${String(month + 1).padStart(2, '0')}`, detail: `${year}年${month + 1}月`, start, end, current: containsToday(start, end) };
+    });
+  }
+
+  if (unit === '季') {
+    const currentQuarterStart = Math.floor(today.getMonth() / 3) * 3;
+    return Array.from({ length: 25 }, (_, index) => {
+      const date = new Date(today.getFullYear(), currentQuarterStart + (index - 12) * 3, 1);
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const quarter = Math.floor(month / 3) + 1;
+      const start = localDate(year, month, 1);
+      const end = localDate(year, month + 3, 0);
+      return { key: start, label: `${year} Q${quarter}`, detail: `${year}年第${quarter}季度`, start, end, current: containsToday(start, end) };
+    });
+  }
+
+  return Array.from({ length: 17 }, (_, index) => {
+    const year = today.getFullYear() + index - 8;
+    const start = localDate(year, 0, 1);
+    const end = localDate(year, 11, 31);
+    return { key: start, label: `${year}年`, detail: `${year}年`, start, end, current: containsToday(start, end) };
+  });
 }
 
 function studentColor(student?: Student) {
@@ -283,6 +339,8 @@ function IconButton({ label, children, onClick, pressed }: { label: string; chil
 export default function Home() {
   const rootRef = useRef<HTMLElement>(null);
   const statsContentRef = useRef<HTMLDivElement>(null);
+  const periodChartScrollRef = useRef<HTMLDivElement>(null);
+  const periodScrollTimerRef = useRef<number | null>(null);
   const incomeValueRef = useRef<HTMLElement>(null);
   const previousIncomeRef = useRef(0);
   const [students, setStudents] = useState<Student[]>(initialStudents);
@@ -292,8 +350,8 @@ export default function Home() {
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('month');
   const [selectedDate, setSelectedDate] = useState('2026-08-26');
   const [monthCursor, setMonthCursor] = useState(new Date(2026, 7, 1));
-  const [range, setRange] = useState<Range>('本月');
-  const [activeStatPeriodIndex, setActiveStatPeriodIndex] = useState(3);
+  const [statUnit, setStatUnit] = useState<StatUnit>('月');
+  const [activeStatPeriodIndex, setActiveStatPeriodIndex] = useState(18);
   const [contributionMetric, setContributionMetric] = useState<ContributionMetric>('income');
   const [query, setQuery] = useState('');
   const [studentStatusFilter, setStudentStatusFilter] = useState<StudentStatusFilter>('active');
@@ -310,6 +368,7 @@ export default function Home() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
+  const [showScheduleEntries, setShowScheduleEntries] = useState(true);
 
   useEffect(() => {
     try {
@@ -370,7 +429,7 @@ export default function Home() {
       gsap.fromTo(bars, { autoAlpha: 0.58, y: 6 }, { autoAlpha: 1, y: 0, duration: 0.24, stagger: 0.03, ease: 'power2.out', clearProps: 'all' });
     });
     return () => mm.revert();
-  }, [range, activeStatPeriodIndex, contributionMetric, tab]);
+  }, [statUnit, contributionMetric, tab]);
 
   const studentMap = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student])), [students]);
   const calendarLessons = useMemo(() => lessons.filter((lesson) => lesson.status !== '已取消'
@@ -378,7 +437,8 @@ export default function Home() {
     && (!selectedStudentIds.length || selectedStudentIds.includes(lesson.studentId))
     && (!selectedSubjects.length || selectedSubjects.includes(lesson.subject))), [lessons, studentMap, selectedStudentIds, selectedSubjects]);
   const selectedLessons = calendarLessons.filter((lesson) => lesson.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
-  const selectedScheduleEntries = scheduleEntries.filter((entry) => entry.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const visibleScheduleEntries = showScheduleEntries ? scheduleEntries : [];
+  const selectedScheduleEntries = visibleScheduleEntries.filter((entry) => entry.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const activeStudent = activeStudentId ? studentMap[activeStudentId] : null;
 
   const calendarCells = useMemo(() => {
@@ -396,57 +456,28 @@ export default function Home() {
   }, [monthCursor]);
 
   const completedLessons = useMemo(() => lessons.filter((lesson) => lesson.status === '已完成'), [lessons]);
-  const rangeLessons = useMemo(() => {
-    const startOfWeek = weekStartFor(demoToday);
-    return completedLessons.filter((lesson) => {
-      if (range === '今天') return lesson.date === demoToday;
-      if (range === '本周') return lesson.date >= dateFrom(startOfWeek, 0) && lesson.date <= dateFrom(startOfWeek, 6);
-      if (range === '本月') return lesson.date.startsWith('2026-08');
-      if (range === '本年') return lesson.date.startsWith('2026');
-      return true;
-    });
-  }, [completedLessons, range]);
-
-  const statPeriods = useMemo<StatPeriod[]>(() => {
-    if (range === '今天') return [{ key: demoToday, label: '今天', detail: '8月26日', start: demoToday, end: demoToday }];
-    if (range === '本周') {
-      const start = weekStartFor(demoToday);
-      return weekDays.map((day, index) => {
-        const date = dateFrom(start, index);
-        return { key: date, label: `周${day}`, detail: formatShortDate(date), start: date, end: date };
-      });
-    }
-    if (range === '本月') {
-      return Array.from({ length: 5 }, (_, index) => {
-        const startDay = index * 7 + 1;
-        const endDay = Math.min(31, startDay + 6);
-        return { key: `2026-08-${String(startDay).padStart(2, '0')}`, label: `${startDay}–${endDay}`, detail: `8月${startDay}日–8月${endDay}日`, start: localDate(2026, 7, startDay), end: localDate(2026, 7, endDay) };
-      });
-    }
-    if (range === '本年') {
-      return Array.from({ length: 12 }, (_, index) => ({ key: `2026-${String(index + 1).padStart(2, '0')}`, label: `${index + 1}月`, detail: `2026年${index + 1}月`, start: localDate(2026, index, 1), end: localDate(2026, index + 1, 0) }));
-    }
-    const monthKeys = [...new Set(completedLessons.map((lesson) => lesson.date.slice(0, 7)))].sort();
-    return monthKeys.map((key) => {
-      const [year, month] = key.split('-').map(Number);
-      return { key, label: `${month}月`, detail: `${year}年${month}月`, start: `${key}-01`, end: localDate(year, month, 0) };
-    });
-  }, [completedLessons, range]);
+  const statPeriods = useMemo<StatPeriod[]>(() => buildStatPeriods(statUnit), [statUnit]);
 
   useEffect(() => {
-    const defaultIndex = range === '本周' ? 2 : range === '本月' ? 3 : range === '本年' ? 7 : Math.max(0, statPeriods.length - 1);
-    setActiveStatPeriodIndex(Math.min(defaultIndex, Math.max(0, statPeriods.length - 1)));
-  }, [range, statPeriods.length]);
+    if (tab !== 'stats') return;
+    const currentIndex = Math.max(0, statPeriods.findIndex((period) => period.current));
+    setActiveStatPeriodIndex(currentIndex);
+    window.requestAnimationFrame(() => {
+      const selected = periodChartScrollRef.current?.querySelector<HTMLElement>(`[data-period-index="${currentIndex}"]`);
+      selected?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+  }, [statPeriods, tab]);
 
   const safeStatPeriodIndex = Math.min(activeStatPeriodIndex, Math.max(0, statPeriods.length - 1));
   const activeStatPeriod = statPeriods[safeStatPeriodIndex];
   const periodLessons = useMemo(() => activeStatPeriod ? completedLessons.filter((lesson) => lesson.date >= activeStatPeriod.start && lesson.date <= activeStatPeriod.end) : [], [activeStatPeriod, completedLessons]);
   const stats = useMemo(() => calculateLessonStats(periodLessons), [periodLessons]);
-  const rangeStats = useMemo(() => calculateLessonStats(rangeLessons), [rangeLessons]);
   const periodValues = statPeriods.map((period) => calculateLessonStats(completedLessons.filter((lesson) => lesson.date >= period.start && lesson.date <= period.end)).receivable);
   const maxPeriodValue = Math.max(1, ...periodValues);
   const previousPeriodValue = safeStatPeriodIndex > 0 ? periodValues[safeStatPeriodIndex - 1] : 0;
   const periodChange = previousPeriodValue ? Math.round((stats.receivable - previousPeriodValue) / previousPeriodValue * 100) : stats.receivable ? 100 : 0;
+  const nearbyValues = periodValues.slice(Math.max(0, safeStatPeriodIndex - 2), Math.min(periodValues.length, safeStatPeriodIndex + 3));
+  const nearbyAverage = nearbyValues.length ? nearbyValues.reduce((sum, value) => sum + value, 0) / nearbyValues.length : 0;
 
   const contributionData = useMemo(() => students.map((student) => {
     const items = periodLessons.filter((lesson) => lesson.studentId === student.id);
@@ -471,6 +502,33 @@ export default function Home() {
     previousIncomeRef.current = targetValue;
     return () => mm.revert();
   }, [stats.receivable, tab]);
+
+  useEffect(() => () => {
+    if (periodScrollTimerRef.current !== null) window.clearTimeout(periodScrollTimerRef.current);
+  }, []);
+
+  function scrollToStatPeriod(index: number) {
+    const bounded = Math.max(0, Math.min(index, statPeriods.length - 1));
+    setActiveStatPeriodIndex(bounded);
+    window.requestAnimationFrame(() => {
+      const target = periodChartScrollRef.current?.querySelector<HTMLElement>(`[data-period-index="${bounded}"]`);
+      target?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+  }
+
+  function syncStatPeriodAfterScroll() {
+    if (periodScrollTimerRef.current !== null) window.clearTimeout(periodScrollTimerRef.current);
+    periodScrollTimerRef.current = window.setTimeout(() => {
+      const scroller = periodChartScrollRef.current;
+      if (!scroller) return;
+      const center = scroller.scrollLeft + scroller.clientWidth / 2;
+      const buttons = Array.from(scroller.querySelectorAll<HTMLElement>('[data-period-index]'));
+      if (!buttons.length) return;
+      const closest = buttons.reduce((best, button) => Math.abs(button.offsetLeft + button.offsetWidth / 2 - center) < Math.abs(best.offsetLeft + best.offsetWidth / 2 - center) ? button : best, buttons[0]);
+      const index = Number(closest?.dataset.periodIndex);
+      if (Number.isFinite(index)) setActiveStatPeriodIndex(index);
+    }, 120);
+  }
 
   function goMonth(offset: number) {
     const next = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + offset, 1);
@@ -576,8 +634,8 @@ export default function Home() {
   }
 
   const monthLessons = calendarLessons.filter((lesson) => lesson.date.startsWith(`${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`));
-  const monthScheduleEntries = scheduleEntries.filter((entry) => entry.date.startsWith(`${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`));
-  const activeFilterCount = selectedStudentIds.length + selectedSubjects.length;
+  const monthScheduleEntries = visibleScheduleEntries.filter((entry) => entry.date.startsWith(`${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`));
+  const activeFilterCount = selectedStudentIds.length + selectedSubjects.length + (showScheduleEntries ? 0 : 1);
   const selectedWeekStart = weekStartFor(selectedDate);
   const selectedWeekEnd = dateFrom(selectedWeekStart, 6);
   const calendarTitle = calendarMode === 'month'
@@ -625,9 +683,9 @@ export default function Home() {
               </div>
               <div className="calendar-filter-bar">
                 <button className={`filter-trigger ${activeFilterCount ? 'active' : ''}`} onClick={() => setFilterOpen((value) => !value)} aria-expanded={filterOpen} aria-controls="calendar-filters"><Filter size={15} aria-hidden="true" />筛选{activeFilterCount ? <span>{activeFilterCount}</span> : null}</button>
-                <small>{activeFilterCount ? '当前仅显示已选课程' : '显示全部学生与科目'}</small>
+                <small>{!showScheduleEntries ? '已隐藏非课程待办' : activeFilterCount ? '当前仅显示已选课程' : '显示全部课程与待办'}</small>
               </div>
-              {filterOpen && <CalendarFilters students={students} selectedStudentIds={selectedStudentIds} selectedSubjects={selectedSubjects} onStudentChange={setSelectedStudentIds} onSubjectChange={setSelectedSubjects} />}
+              {filterOpen && <CalendarFilters students={students} selectedStudentIds={selectedStudentIds} selectedSubjects={selectedSubjects} showScheduleEntries={showScheduleEntries} onStudentChange={setSelectedStudentIds} onSubjectChange={setSelectedSubjects} onScheduleVisibilityChange={setShowScheduleEntries} />}
               <div className="calendar-heading">
                 <button className="today-button" onClick={() => { setMonthCursor(new Date(2026, 7, 1)); setSelectedDate('2026-08-26'); }}>今天</button>
                 <p>{calendarMode === 'month' ? `${monthLessons.length} 节课 · ${monthScheduleEntries.length} 项提醒` : '08:00–22:00 · 点击课程或提醒查看'}</p>
@@ -641,7 +699,7 @@ export default function Home() {
                 <div className="calendar-grid">
                   {calendarCells.map((cell) => {
                     const dayLessons = calendarLessons.filter((item) => item.date === cell.date);
-                    const dayScheduleEntries = scheduleEntries.filter((item) => item.date === cell.date);
+                    const dayScheduleEntries = visibleScheduleEntries.filter((item) => item.date === cell.date);
                     const dayStudents = [...new Map(dayLessons.map((lesson) => [lesson.studentId, studentMap[lesson.studentId]])).values()].filter(Boolean) as Student[];
                     const colors = dayStudents.map((student) => studentColor(student));
                     const tint = colors.length === 1
@@ -653,7 +711,7 @@ export default function Home() {
                     return <button key={cell.date} style={tint ? { background: tint } : undefined} onClick={() => setSelectedDate(cell.date)} className={`date-cell ${dayLessons.length ? 'has-lessons' : ''} ${dayScheduleEntries.length ? 'has-schedule-entry' : ''} ${cell.date === selectedDate ? 'active' : ''} ${!cell.current ? 'outside' : ''}`} aria-label={`${cell.date}${dayLessons.length ? `，${dayLessons.length}节课：${lessonNames}` : ''}${dayScheduleEntries.length ? `，${dayScheduleEntries.length}项待办或提醒` : ''}`}><span>{cell.day}</span>{colors.length > 0 && <i className="student-color-dots" aria-hidden="true">{colors.slice(0, 3).map((color, index) => <b key={`${color}-${index}`} style={{ backgroundColor: color }} />)}</i>}{dayScheduleEntries.length > 0 && <i className="calendar-schedule-mark" aria-hidden="true"><b /></i>}</button>;
                   })}
                 </div>
-              </> : <WeekCalendar selectedDate={selectedDate} lessons={calendarLessons} scheduleEntries={scheduleEntries} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} onScheduleEntry={(entry) => setScheduleDraft({ ...entry, scheduleMode: 'single' })} />}
+              </> : <WeekCalendar selectedDate={selectedDate} lessons={calendarLessons} scheduleEntries={visibleScheduleEntries} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson, scheduleMode: 'single' })} onScheduleEntry={(entry) => setScheduleDraft({ ...entry, scheduleMode: 'single' })} />}
             </section>
 
             <section className="schedule-section">
@@ -715,17 +773,18 @@ export default function Home() {
 
         {tab === 'stats' && (
           <div className="view-content stats-view">
-            <div className="range-switcher" role="group" aria-label="统计时间范围" style={{ '--range-index': ranges.indexOf(range) } as React.CSSProperties}><i className="range-active-indicator" aria-hidden="true" />{ranges.map((item) => <button key={item} className={range === item ? 'active' : ''} onClick={() => setRange(item)} aria-pressed={range === item}>{item}</button>)}</div>
+            <div className="range-switcher" role="group" aria-label="统计计量单位" style={{ '--range-index': statUnits.indexOf(statUnit) } as React.CSSProperties}><i className="range-active-indicator" aria-hidden="true" />{statUnits.map((item) => <button key={item} className={statUnit === item ? 'active' : ''} onClick={() => setStatUnit(item)} aria-pressed={statUnit === item}>{item}</button>)}</div>
             <div className="stats-content" ref={statsContentRef} aria-live="polite">
             <section className="income-hero">
-              <div className="income-period-heading"><div><p>{activeStatPeriod?.detail || range}应收</p><strong ref={incomeValueRef}>{cnMoney.format(stats.receivable)}</strong></div><small>{range}合计 {cnMoney.format(rangeStats.receivable)}</small></div>
+              <div className="income-period-heading"><div><p>{activeStatPeriod?.detail || statUnit}应收</p><strong ref={incomeValueRef}>{cnMoney.format(stats.receivable)}</strong></div><small>{statUnit}视图<br />邻近均值 {cnMoney.format(nearbyAverage)}</small></div>
               <span className={`trend ${periodChange < 0 ? 'down' : ''}`}><BarChart3 size={15} />较上一期间 {periodChange >= 0 ? '+' : ''}{periodChange}%</span>
-              <div className="period-chart-scroll">
-                <div className="period-chart" role="group" aria-label={`${range}收入期间选择`} style={{ '--period-count': statPeriods.length } as React.CSSProperties}>
+              <div className="period-chart-meta"><span>每根柱代表 1{statUnit} · 左右滑动查看相邻期间</span><div><button type="button" onClick={() => scrollToStatPeriod(safeStatPeriodIndex - 1)} disabled={safeStatPeriodIndex === 0} aria-label={`查看上一个${statUnit}`}><ChevronLeft size={15} aria-hidden="true" /></button><button type="button" onClick={() => scrollToStatPeriod(safeStatPeriodIndex + 1)} disabled={safeStatPeriodIndex === statPeriods.length - 1} aria-label={`查看下一个${statUnit}`}><ChevronRight size={15} aria-hidden="true" /></button></div></div>
+              <div className="period-chart-scroll" ref={periodChartScrollRef} onScroll={syncStatPeriodAfterScroll} tabIndex={0} aria-label={`${statUnit}收入时间序列，可左右滑动`}>
+                <div className="period-chart" role="group" aria-label={`${statUnit}收入期间选择`} data-unit={statUnit}>
                   {statPeriods.map((period, index) => {
                     const value = periodValues[index] || 0;
                     const selected = index === safeStatPeriodIndex;
-                    return <button type="button" className={`period-bar-button ${selected ? 'selected' : ''}`} key={period.key} aria-pressed={selected} aria-label={`${period.detail}，应收${cnMoney.format(value)}`} onClick={() => setActiveStatPeriodIndex(index)}><span className="period-bar-track"><i className="period-bar-fill" style={{ transform: `scaleY(${value / maxPeriodValue})` }} /></span><small>{period.label}</small><b>{value ? `${Math.round(value / 100) / 10}k` : '0'}</b></button>;
+                    return <button type="button" className={`period-bar-button ${selected ? 'selected' : ''} ${period.current ? 'current' : ''}`} key={period.key} data-period-index={index} aria-pressed={selected} aria-label={`${period.detail}，应收${cnMoney.format(value)}${period.current ? '，当前期间' : ''}`} onClick={() => scrollToStatPeriod(index)}><span className="period-bar-track"><i className="period-bar-fill" style={{ transform: `scaleY(${value / maxPeriodValue})` }} /></span><small>{period.label}</small><b>{value ? `${Math.round(value / 100) / 10}k` : '0'}</b></button>;
                   })}
                 </div>
               </div>
@@ -741,7 +800,7 @@ export default function Home() {
               <div className="payment-split"><span>已收 <strong>{cnMoney.format(stats.paid)}</strong></span><span>待收 <strong>{cnMoney.format(stats.unpaid)}</strong></span></div>
             </section>
             <section className="contribution-card">
-              <div className="section-heading compact"><div><p className="eyebrow">Contribution</p><h3>学生贡献占比</h3><small>{activeStatPeriod?.detail || range}</small></div></div>
+              <div className="section-heading compact"><div><p className="eyebrow">Contribution</p><h3>学生贡献占比</h3><small>{activeStatPeriod?.detail || statUnit}</small></div></div>
               <div className="contribution-switch" role="group" aria-label="学生贡献指标">
                 {([{ value: 'income' as const, label: '收款' }, { value: 'hours' as const, label: '课时' }, { value: 'lessons' as const, label: '课数' }]).map((item) => <button type="button" key={item.value} className={contributionMetric === item.value ? 'selected' : ''} aria-pressed={contributionMetric === item.value} onClick={() => setContributionMetric(item.value)}>{item.label}</button>)}
               </div>
@@ -775,7 +834,7 @@ export default function Home() {
   );
 }
 
-function CalendarFilters({ students, selectedStudentIds, selectedSubjects, onStudentChange, onSubjectChange }: { students: Student[]; selectedStudentIds: string[]; selectedSubjects: Subject[]; onStudentChange: (ids: string[]) => void; onSubjectChange: (subjects: Subject[]) => void }) {
+function CalendarFilters({ students, selectedStudentIds, selectedSubjects, showScheduleEntries, onStudentChange, onSubjectChange, onScheduleVisibilityChange }: { students: Student[]; selectedStudentIds: string[]; selectedSubjects: Subject[]; showScheduleEntries: boolean; onStudentChange: (ids: string[]) => void; onSubjectChange: (subjects: Subject[]) => void; onScheduleVisibilityChange: (show: boolean) => void }) {
   return <section className="calendar-filters" id="calendar-filters" aria-label="课表筛选">
     <div className="filter-group">
       <div className="filter-group-heading"><strong>学生</strong><button type="button" onClick={() => onStudentChange([])} aria-pressed={!selectedStudentIds.length}>全部学生</button></div>
@@ -791,7 +850,15 @@ function CalendarFilters({ students, selectedStudentIds, selectedSubjects, onStu
         return <button type="button" key={subject} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => onSubjectChange(selected ? selectedSubjects.filter((item) => item !== subject) : [...selectedSubjects, subject])}>{subject}<Check size={13} aria-hidden="true" /></button>;
       })}</div>
     </div>
-    <p>可多选；未勾选某一分类时，该分类默认显示全部。</p>
+    <div className="filter-group schedule-visibility-group">
+      <div className="filter-group-heading"><strong>非课程安排</strong></div>
+      <button type="button" className={`schedule-visibility-toggle ${showScheduleEntries ? 'selected' : ''}`} aria-pressed={showScheduleEntries} onClick={() => onScheduleVisibilityChange(!showScheduleEntries)}>
+        <span aria-hidden="true">{showScheduleEntries ? <Check size={15} /> : <X size={15} />}</span>
+        <div><strong>{showScheduleEntries ? '显示待办与提醒' : '隐藏待办与提醒'}</strong><small>影响月历标记、周课表和当天安排</small></div>
+        <i aria-hidden="true"><b /></i>
+      </button>
+    </div>
+    <p>学生和科目可多选；未勾选某一分类时，该分类默认显示全部。</p>
   </section>;
 }
 
@@ -867,7 +934,7 @@ function WeekCalendar({ selectedDate, lessons, scheduleEntries, students, onSele
 function WeekTimeline({ compact = false, days, lessons, scheduleEntries, students, selectedDate, onSelectDate, onLesson, onScheduleEntry }: { compact?: boolean; days: { label: string; date: string }[]; lessons: Lesson[]; scheduleEntries: ScheduleEntry[]; students: Record<string, Student>; selectedDate: string; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void; onScheduleEntry: (entry: ScheduleEntry) => void }) {
   const startHour = 8;
   const endHour = 22;
-  const rowHeight = compact ? 28 : 64;
+  const rowHeight = compact ? 32 : 64;
   const totalHeight = (endHour - startHour) * rowHeight;
   const hourLines = Array.from({ length: endHour - startHour + 1 }, (_, index) => index + startHour);
   const timeLabels = compact ? hourLines.filter((hour) => (hour - startHour) % 2 === 0) : hourLines;
