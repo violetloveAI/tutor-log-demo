@@ -1,0 +1,647 @@
+'use client';
+/* eslint-disable @next/next/no-img-element -- local compressed lesson attachments use data URLs */
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import gsap from 'gsap';
+import {
+  ArrowLeft, BarChart3, BookOpen, CalendarDays, Camera, Check,
+  CalendarRange, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, GraduationCap,
+  LockKeyhole, LockOpen, MapPin, Moon, Palette, Plus, Search, ShieldCheck, Sun, Trash2, Users, X,
+} from 'lucide-react';
+
+type Subject = '语文' | '数学' | '英语';
+type LessonStatus = '已预约' | '已完成' | '已取消';
+type Mastery = '已掌握' | '需要巩固' | '未掌握';
+type Payment = '已收款' | '待收款';
+type Tab = 'calendar' | 'students' | 'stats';
+type Range = '今天' | '本周' | '本月' | '本年' | '全部';
+type CalendarMode = 'month' | 'week';
+
+type Student = {
+  id: string; name: string; nickname: string; grade: string; school: string;
+  parentName: string; parentPhone: string; subjects: Subject[];
+  defaultDuration: number; defaultFee: number; notes: string;
+  locationShort?: string; fullAddress?: string; commuteMinutes?: number; color?: string;
+  teacherEvaluation?: string; parentEvaluation?: string; archiveNotes?: string;
+};
+
+type Lesson = {
+  id: string; studentId: string; date: string; startTime: string; endTime: string;
+  duration: number; subject: Subject; status: LessonStatus; teachingContent: string;
+  mastery: Mastery; masteryNotes: string; performance: string; homework: string;
+  nextPlan: string; privateNotes: string; fee: number; payment: Payment; photos: string[];
+  masteredWhat?: string; needsPracticeWhat?: string; notMasteredWhat?: string;
+};
+
+const studentColorPalette = ['#7b6ba8', '#5f7f65', '#b16f4f', '#397c8f', '#a05c75', '#8a713e', '#526fa3', '#7b715f'];
+
+const initialStudents: Student[] = [
+  { id: 'mia', name: '林知夏', nickname: 'Mia', grade: '五年级', school: '启明小学', parentName: '林女士', parentPhone: '演示号码', subjects: ['数学', '英语'], defaultDuration: 90, defaultFee: 300, notes: '应用题读题时容易漏条件。', locationShort: '徐家汇', fullAddress: '演示地址：徐汇区某小区', commuteMinutes: 35, color: studentColorPalette[0] },
+  { id: 'leo', name: '周予安', nickname: 'Leo', grade: '四年级', school: '实验小学', parentName: '周先生', parentPhone: '演示号码', subjects: ['语文', '英语'], defaultDuration: 60, defaultFee: 220, notes: '口语表达积极，书写需要更细心。', locationShort: '浦东', fullAddress: '演示地址：浦东新区某小区', commuteMinutes: 50, color: studentColorPalette[1] },
+  { id: 'emma', name: '陈嘉禾', nickname: 'Emma', grade: '六年级', school: '文澜小学', parentName: '陈女士', parentPhone: '演示号码', subjects: ['语文', '数学'], defaultDuration: 90, defaultFee: 280, notes: '小升初阶段，重点保持稳定节奏。', locationShort: '杨浦', fullAddress: '演示地址：杨浦区某小区', commuteMinutes: 42, color: studentColorPalette[2] },
+];
+
+const initialLessons: Lesson[] = [
+  { id: 'l1', studentId: 'mia', date: '2026-08-26', startTime: '16:00', endTime: '17:30', duration: 90, subject: '数学', status: '已完成', teachingContent: '分数应用题与错题订正', mastery: '需要巩固', masteryNotes: '基本方法已理解，复杂条件仍会漏读。', performance: '前半节专注，订正时能主动复盘。', homework: '练习册 P42，第 3–8 题', nextPlan: '继续练习分数应用题，复习约分。', privateNotes: '', fee: 300, payment: '已收款', photos: [] },
+  { id: 'l2', studentId: 'leo', date: '2026-08-26', startTime: '19:00', endTime: '20:00', duration: 60, subject: '英语', status: '已预约', teachingContent: '一般过去时', mastery: '需要巩固', masteryNotes: '', performance: '', homework: '', nextPlan: '', privateNotes: '', fee: 220, payment: '待收款', photos: [] },
+  { id: 'l3', studentId: 'mia', date: '2026-08-21', startTime: '16:00', endTime: '17:30', duration: 90, subject: '数学', status: '已完成', teachingContent: '分数乘法与约分', mastery: '已掌握', masteryNotes: '计算准确率明显提高。', performance: '状态很好。', homework: '口算两页', nextPlan: '进入分数应用题。', privateNotes: '', fee: 300, payment: '已收款', photos: [] },
+  { id: 'l4', studentId: 'emma', date: '2026-08-18', startTime: '18:30', endTime: '20:00', duration: 90, subject: '语文', status: '已完成', teachingContent: '记叙文阅读：人物描写', mastery: '已掌握', masteryNotes: '能准确识别动作与心理描写。', performance: '表达清楚。', homework: '完成一篇人物小传', nextPlan: '讲解作文结构。', privateNotes: '', fee: 280, payment: '待收款', photos: [] },
+  { id: 'l5', studentId: 'leo', date: '2026-08-12', startTime: '19:00', endTime: '20:00', duration: 60, subject: '英语', status: '已完成', teachingContent: '动词过去式变化', mastery: '未掌握', masteryNotes: '不规则变化记忆不牢。', performance: '后半段略疲劳。', homework: '背诵不规则动词表 1–20', nextPlan: '听写并进入句型练习。', privateNotes: '', fee: 220, payment: '已收款', photos: [] },
+  { id: 'l6', studentId: 'emma', date: '2026-08-08', startTime: '14:00', endTime: '15:30', duration: 90, subject: '数学', status: '已完成', teachingContent: '圆柱体积综合题', mastery: '需要巩固', masteryNotes: '单位换算仍会出错。', performance: '愿意主动讲思路。', homework: '综合卷第 2 面', nextPlan: '集中复习单位换算。', privateNotes: '', fee: 280, payment: '已收款', photos: [] },
+  { id: 'l7', studentId: 'mia', date: '2026-07-29', startTime: '16:00', endTime: '17:30', duration: 90, subject: '英语', status: '已完成', teachingContent: '一般过去时', mastery: '未掌握', masteryNotes: 'be 动词变化容易混淆。', performance: '需要更多口头练习。', homework: '完成时态对比练习', nextPlan: '复习 was / were。', privateNotes: '', fee: 280, payment: '已收款', photos: [] },
+  { id: 'l8', studentId: 'mia', date: '2026-07-22', startTime: '16:00', endTime: '17:30', duration: 90, subject: '数学', status: '已完成', teachingContent: '小数除法复习', mastery: '已掌握', masteryNotes: '', performance: '稳定。', homework: '', nextPlan: '分数乘法。', privateNotes: '', fee: 280, payment: '已收款', photos: [] },
+];
+
+const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+const subjects: Subject[] = ['语文', '数学', '英语'];
+const statusOptions: LessonStatus[] = ['已预约', '已完成', '已取消'];
+const ranges: Range[] = ['今天', '本周', '本月', '本年', '全部'];
+const cnMoney = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 });
+
+function studentColor(student?: Student) {
+  return student?.color || '#6d7f6a';
+}
+
+function contrastText(hex: string) {
+  const normalized = hex.replace('#', '');
+  const value = normalized.length === 3 ? normalized.split('').map((part) => part + part).join('') : normalized;
+  const [red, green, blue] = [0, 2, 4].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16) / 255);
+  const luminance = [red, green, blue].map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+  return luminance > 0.179 ? '#000000' : '#ffffff';
+}
+
+function colorWash(hex: string, alpha = 0.2) {
+  const normalized = hex.replace('#', '');
+  const value = normalized.length === 3 ? normalized.split('').map((part) => part + part).join('') : normalized;
+  const channels = [0, 2, 4].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
+  return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, ${alpha})`;
+}
+
+function avatarStyle(student?: Student): React.CSSProperties {
+  const color = studentColor(student);
+  return { backgroundColor: color, color: contrastText(color) };
+}
+
+function localDate(year: number, month: number, day: number) {
+  const date = new Date(year, month, day);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatShortDate(value: string) {
+  const [, month, day] = value.split('-');
+  return `${Number(month)}月${Number(day)}日`;
+}
+
+function weekStartFor(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  const dayOffset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - dayOffset);
+  return date;
+}
+
+function dateFrom(base: Date, offset: number) {
+  const next = new Date(base);
+  next.setDate(base.getDate() + offset);
+  return localDate(next.getFullYear(), next.getMonth(), next.getDate());
+}
+
+function legacyMasteryText(lesson: Lesson, level: Mastery) {
+  if (level === '已掌握') return lesson.masteredWhat ?? (lesson.mastery === level ? lesson.masteryNotes : '');
+  if (level === '需要巩固') return lesson.needsPracticeWhat ?? (lesson.mastery === level ? lesson.masteryNotes : '');
+  return lesson.notMasteredWhat ?? (lesson.mastery === level ? lesson.masteryNotes : '');
+}
+
+async function hashPin(pin: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`tutor-log:${pin}`));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function compressPhoto(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = reject;
+      image.onload = () => {
+        const max = 1200;
+        const scale = Math.min(1, max / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(image.width * scale);
+        canvas.height = Math.round(image.height * scale);
+        canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.78));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function emptyLesson(student: Student, date: string): Lesson {
+  const startHour = 16;
+  const endMinutes = startHour * 60 + student.defaultDuration;
+  return {
+    id: `lesson-${Date.now()}`, studentId: student.id, date, startTime: '16:00',
+    endTime: `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`,
+    duration: student.defaultDuration, subject: student.subjects[0] || '数学', status: '已预约',
+    teachingContent: '', mastery: '需要巩固', masteryNotes: '', performance: '', homework: '',
+    nextPlan: '', privateNotes: '', fee: student.defaultFee, payment: '待收款', photos: [],
+    masteredWhat: '', needsPracticeWhat: '', notMasteredWhat: '',
+  };
+}
+
+function IconButton({ label, children, onClick, pressed }: { label: string; children: React.ReactNode; onClick?: () => void; pressed?: boolean }) {
+  return <button className="icon-button" onClick={onClick} aria-label={label} aria-pressed={pressed}>{children}</button>;
+}
+
+export default function Home() {
+  const rootRef = useRef<HTMLElement>(null);
+  const [students, setStudents] = useState<Student[]>(initialStudents);
+  const [lessons, setLessons] = useState<Lesson[]>(initialLessons);
+  const [tab, setTab] = useState<Tab>('calendar');
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>('month');
+  const [selectedDate, setSelectedDate] = useState('2026-08-26');
+  const [monthCursor, setMonthCursor] = useState(new Date(2026, 7, 1));
+  const [range, setRange] = useState<Range>('本月');
+  const [query, setQuery] = useState('');
+  const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
+  const [lessonDraft, setLessonDraft] = useState<Lesson | null>(null);
+  const [studentDraft, setStudentDraft] = useState<Student | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [archiveUnlocked, setArchiveUnlocked] = useState(false);
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [savedToast, setSavedToast] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('tutor-log-demo-data-v1');
+      if (stored) {
+        const parsed = JSON.parse(stored) as { students: Student[]; lessons: Lesson[] };
+        if (parsed.students?.length) setStudents(parsed.students.map((student, index) => ({
+          ...student,
+          locationShort: student.locationShort || '',
+          fullAddress: student.fullAddress || '',
+          commuteMinutes: student.commuteMinutes || 0,
+          color: student.color || studentColorPalette[index % studentColorPalette.length],
+        })));
+        if (parsed.lessons?.length) setLessons(parsed.lessons.map((lesson) => ({
+          ...lesson,
+          masteredWhat: legacyMasteryText(lesson, '已掌握'),
+          needsPracticeWhat: legacyMasteryText(lesson, '需要巩固'),
+          notMasteredWhat: legacyMasteryText(lesson, '未掌握'),
+        })));
+      }
+      const storedTheme = localStorage.getItem('tutor-log-demo-theme') as 'light' | 'dark' | null;
+      if (storedTheme) setTheme(storedTheme);
+    } finally { setReady(true); }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('tutor-log-demo-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (ready) localStorage.setItem('tutor-log-demo-data-v1', JSON.stringify({ students, lessons }));
+  }, [students, lessons, ready]);
+
+  useEffect(() => {
+    const mm = gsap.matchMedia();
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      const context = gsap.context(() => {
+        gsap.fromTo('.view-content', { autoAlpha: 0, y: 8 }, { autoAlpha: 1, y: 0, duration: 0.24, ease: 'power2.out', clearProps: 'all' });
+      }, rootRef);
+      return () => context.revert();
+    });
+    return () => mm.revert();
+  }, [tab, activeStudentId]);
+
+  const studentMap = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student])), [students]);
+  const selectedLessons = lessons.filter((lesson) => lesson.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const activeStudent = activeStudentId ? studentMap[activeStudentId] : null;
+
+  const calendarCells = useMemo(() => {
+    const year = monthCursor.getFullYear();
+    const month = monthCursor.getMonth();
+    const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+    const total = new Date(year, month + 1, 0).getDate();
+    const previousTotal = new Date(year, month, 0).getDate();
+    return Array.from({ length: 42 }, (_, index) => {
+      if (index < firstWeekday) return { day: previousTotal - firstWeekday + index + 1, current: false, date: localDate(year, month - 1, previousTotal - firstWeekday + index + 1) };
+      if (index >= firstWeekday + total) return { day: index - firstWeekday - total + 1, current: false, date: localDate(year, month + 1, index - firstWeekday - total + 1) };
+      const day = index - firstWeekday + 1;
+      return { day, current: true, date: localDate(year, month, day) };
+    });
+  }, [monthCursor]);
+
+  const filteredLessons = useMemo(() => {
+    const now = new Date(2026, 7, 26);
+    const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    return lessons.filter((lesson) => {
+      const date = new Date(`${lesson.date}T12:00:00`);
+      if (range === '今天') return lesson.date === '2026-08-26';
+      if (range === '本周') return date >= startOfWeek && date <= now;
+      if (range === '本月') return lesson.date.startsWith('2026-08');
+      if (range === '本年') return lesson.date.startsWith('2026');
+      return true;
+    }).filter((lesson) => lesson.status === '已完成');
+  }, [lessons, range]);
+
+  const stats = useMemo(() => {
+    const receivable = filteredLessons.reduce((sum, item) => sum + item.fee, 0);
+    const paid = filteredLessons.filter((item) => item.payment === '已收款').reduce((sum, item) => sum + item.fee, 0);
+    const minutes = filteredLessons.reduce((sum, item) => sum + item.duration, 0);
+    return { receivable, paid, unpaid: receivable - paid, hours: minutes / 60, count: filteredLessons.length, hourly: minutes ? receivable / (minutes / 60) : 0 };
+  }, [filteredLessons]);
+
+  function goMonth(offset: number) {
+    const next = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + offset, 1);
+    setMonthCursor(next);
+    setSelectedDate(localDate(next.getFullYear(), next.getMonth(), 1));
+  }
+
+  function goWeek(offset: number) {
+    const start = weekStartFor(selectedDate);
+    const nextDate = dateFrom(start, offset * 7);
+    const next = new Date(`${nextDate}T12:00:00`);
+    setSelectedDate(nextDate);
+    setMonthCursor(new Date(next.getFullYear(), next.getMonth(), 1));
+  }
+
+  function openNewLesson() {
+    setLessonDraft(emptyLesson(students[0], selectedDate));
+  }
+
+  function saveLesson(complete = false) {
+    if (!lessonDraft) return;
+    const next = complete ? { ...lessonDraft, status: '已完成' as LessonStatus } : lessonDraft;
+    setLessons((items) => items.some((item) => item.id === next.id) ? items.map((item) => item.id === next.id ? next : item) : [...items, next]);
+    setLessonDraft(null); setSavedToast(true); window.setTimeout(() => setSavedToast(false), 1800);
+  }
+
+  function deleteLesson(id: string) {
+    if (window.confirm('确定删除这节课程吗？此操作不可撤销。')) {
+      setLessons((items) => items.filter((item) => item.id !== id)); setLessonDraft(null);
+    }
+  }
+
+  function openNewStudent() {
+    setStudentDraft({ id: `student-${Date.now()}`, name: '', nickname: '', grade: '一年级', school: '', parentName: '', parentPhone: '', subjects: ['数学'], defaultDuration: 90, defaultFee: 300, notes: '', locationShort: '', fullAddress: '', commuteMinutes: 0, color: studentColorPalette[students.length % studentColorPalette.length] });
+  }
+
+  function saveStudent() {
+    if (!studentDraft || !studentDraft.name.trim()) return;
+    setStudents((items) => items.some((item) => item.id === studentDraft.id) ? items.map((item) => item.id === studentDraft.id ? studentDraft : item) : [...items, studentDraft]);
+    setStudentDraft(null); setSavedToast(true); window.setTimeout(() => setSavedToast(false), 1800);
+  }
+
+  function switchTab(next: Tab) { setTab(next); setActiveStudentId(null); }
+
+  function updateStudentArchive(id: string, changes: Partial<Student>) {
+    setStudents((items) => items.map((student) => student.id === id ? { ...student, ...changes } : student));
+  }
+
+  const monthLessons = lessons.filter((lesson) => lesson.date.startsWith(`${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`) && lesson.status !== '已取消');
+  const selectedWeekStart = weekStartFor(selectedDate);
+  const selectedWeekEnd = dateFrom(selectedWeekStart, 6);
+  const calendarTitle = calendarMode === 'month'
+    ? `${monthCursor.getFullYear()}年${monthCursor.getMonth() + 1}月`
+    : `${formatShortDate(dateFrom(selectedWeekStart, 0))}–${formatShortDate(selectedWeekEnd)}`;
+
+  return (
+    <main className="app-shell" ref={rootRef}>
+      <aside className="brand-panel">
+        <div className="brand-row"><div className="brand-mark">TL</div><span>Tutor Log</span></div>
+        <div>
+          <p className="eyebrow light">Private teaching journal</p>
+          <h1>记录每一次教学，<br />也记录每一点进步。</h1>
+          <p className="brand-copy">为杨老师定制的私人教学工作台。课程、成长和收入，一处清楚记录。</p>
+        </div>
+        <div className="privacy-note"><LockKeyhole size={14} aria-hidden="true" /> 数据仅保存在本机</div>
+      </aside>
+
+      <section className="phone-surface">
+        <div className="demo-banner" role="note"><ShieldCheck size={16} aria-hidden="true" /><span><strong>公开演示版</strong> · 使用虚构数据，请勿填写真实个人信息</span></div>
+        <header className="topbar">
+          <div>
+            <p className="muted">晚上好，杨老师</p>
+            <h2>{tab === 'calendar' ? calendarTitle : tab === 'students' ? '我的学生' : '教学统计'}</h2>
+          </div>
+          <div className="header-actions">
+            <IconButton label={theme === 'light' ? '切换深色模式' : '切换浅色模式'} onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+              {theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}
+            </IconButton>
+            <button className="add-button" onClick={tab === 'students' ? openNewStudent : openNewLesson} aria-label={tab === 'students' ? '新增学生' : '新增课程'}><Plus size={23} /></button>
+          </div>
+        </header>
+
+        {tab === 'calendar' && (
+          <div className="view-content">
+            <section className={`month-card ${calendarMode === 'week' ? 'week-mode' : ''}`} aria-label={calendarMode === 'month' ? '课程月历' : '每周课程表'}>
+              <div className="calendar-view-switch" role="group" aria-label="日历视图">
+                <button className={calendarMode === 'month' ? 'active' : ''} onClick={() => setCalendarMode('month')} aria-pressed={calendarMode === 'month'}><CalendarDays size={15} aria-hidden="true" />月视图</button>
+                <button className={calendarMode === 'week' ? 'active' : ''} onClick={() => setCalendarMode('week')} aria-pressed={calendarMode === 'week'}><CalendarRange size={15} aria-hidden="true" />周课表</button>
+              </div>
+              <div className="calendar-heading">
+                <button className="today-button" onClick={() => { setMonthCursor(new Date(2026, 7, 1)); setSelectedDate('2026-08-26'); }}>今天</button>
+                <p>{calendarMode === 'month' ? `${monthLessons.length} 节课 · ${(monthLessons.reduce((sum, item) => sum + item.duration, 0) / 60).toFixed(1)} 小时` : '08:00–22:00 · 点击课程直接记录'}</p>
+                <div className="month-nav">
+                  <IconButton label={calendarMode === 'month' ? '上个月' : '上一周'} onClick={() => calendarMode === 'month' ? goMonth(-1) : goWeek(-1)}><ChevronLeft size={18} /></IconButton>
+                  <IconButton label={calendarMode === 'month' ? '下个月' : '下一周'} onClick={() => calendarMode === 'month' ? goMonth(1) : goWeek(1)}><ChevronRight size={18} /></IconButton>
+                </div>
+              </div>
+              {calendarMode === 'month' ? <>
+                <div className="calendar-grid weekday-row" aria-hidden="true">{weekDays.map((day) => <span key={day}>{day}</span>)}</div>
+                <div className="calendar-grid">
+                  {calendarCells.map((cell) => {
+                    const dayLessons = lessons.filter((item) => item.date === cell.date && item.status !== '已取消');
+                    const dayStudents = [...new Map(dayLessons.map((lesson) => [lesson.studentId, studentMap[lesson.studentId]])).values()].filter(Boolean) as Student[];
+                    const colors = dayStudents.map((student) => studentColor(student));
+                    const tint = colors.length === 1
+                      ? colorWash(colors[0], 0.22)
+                      : colors.length > 1
+                        ? `linear-gradient(135deg, ${colors.slice(0, 3).map((color, index, items) => `${colorWash(color, 0.24)} ${index / items.length * 100}% ${(index + 1) / items.length * 100}%`).join(', ')})`
+                        : undefined;
+                    const lessonNames = dayStudents.map((student) => student.nickname || student.name).join('、');
+                    return <button key={cell.date} style={tint ? { background: tint } : undefined} onClick={() => setSelectedDate(cell.date)} className={`date-cell ${dayLessons.length ? 'has-lessons' : ''} ${cell.date === selectedDate ? 'active' : ''} ${!cell.current ? 'outside' : ''}`} aria-label={`${cell.date}${dayLessons.length ? `，${dayLessons.length}节课：${lessonNames}` : ''}`}><span>{cell.day}</span>{colors.length > 0 && <i className="student-color-dots" aria-hidden="true">{colors.slice(0, 3).map((color, index) => <b key={`${color}-${index}`} style={{ backgroundColor: color }} />)}</i>}</button>;
+                  })}
+                </div>
+              </> : <WeekCalendar selectedDate={selectedDate} lessons={lessons} students={studentMap} onSelectDate={setSelectedDate} onLesson={(lesson) => setLessonDraft({ ...lesson })} />}
+            </section>
+
+            <section className="schedule-section">
+              <div className="section-heading">
+                <div><p className="eyebrow">{formatShortDate(selectedDate)}</p><h3>当天课程</h3></div>
+                <span className="count-badge">{selectedLessons.length} 节</span>
+              </div>
+              {selectedLessons.length ? selectedLessons.map((lesson) => {
+                const student = studentMap[lesson.studentId];
+                return <button className="lesson-card" style={{ borderLeftColor: studentColor(student) }} key={lesson.id} onClick={() => setLessonDraft({ ...lesson })}>
+                  <div className="time-block"><strong>{lesson.startTime}</strong><span>{lesson.duration} 分钟</span></div>
+                  <div className="lesson-line" />
+                  <div className="lesson-info"><div className="avatar" style={avatarStyle(student)}>{student?.nickname?.[0] || student?.name?.[0]}</div><div><strong>{student?.nickname || student?.name} · {lesson.subject}</strong><p className="lesson-location"><MapPin size={12} aria-hidden="true" />{student?.locationShort || '地点待填写'}</p><p>{lesson.teachingContent || '等待填写课后记录'}</p></div></div>
+                  <span className={`status ${lesson.status === '已完成' ? 'done' : lesson.status === '已取消' ? 'cancelled' : 'booked'}`}>{lesson.status}</span>
+                  <ChevronRight size={16} className="chevron" aria-hidden="true" />
+                </button>;
+              }) : <EmptyState icon={<CalendarDays />} title="当天还没有课程" action="添加课程" onAction={openNewLesson} />}
+            </section>
+          </div>
+        )}
+
+        {tab === 'students' && (
+          <div className="view-content">
+            {activeStudent ? <StudentDetail student={activeStudent} lessons={lessons.filter((item) => item.studentId === activeStudent.id)} onBack={() => setActiveStudentId(null)} onLesson={(lesson) => setLessonDraft({ ...lesson })} onEdit={() => setStudentDraft({ ...activeStudent })} archiveUnlocked={archiveUnlocked} onRequestUnlock={() => setPinDialogOpen(true)} onLock={() => setArchiveUnlocked(false)} onArchiveChange={(changes) => updateStudentArchive(activeStudent.id, changes)} /> : <>
+              <label className="search-field"><Search size={18} aria-hidden="true" /><span className="sr-only">搜索学生</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学生姓名" /></label>
+              <div className="student-list">
+                {students.filter((student) => `${student.name}${student.nickname}`.toLowerCase().includes(query.toLowerCase())).map((student) => {
+                  const history = lessons.filter((item) => item.studentId === student.id && item.status === '已完成');
+                  const minutes = history.reduce((sum, item) => sum + item.duration, 0);
+                  const latest = [...history].sort((a, b) => b.date.localeCompare(a.date))[0];
+                  return <button className="student-card" style={{ borderLeftColor: studentColor(student) }} key={student.id} onClick={() => setActiveStudentId(student.id)}>
+                    <div className="avatar large" style={avatarStyle(student)}>{student.nickname?.[0] || student.name[0]}</div>
+                    <div className="student-main"><div><h3>{student.nickname || student.name}</h3><p>{student.name} · {student.grade}{student.locationShort ? ` · ${student.locationShort}` : ''}</p></div><ChevronRight size={18} aria-hidden="true" /></div>
+                    <div className="student-metrics"><span><strong>{history.length}</strong> 次课</span><span><strong>{(minutes / 60).toFixed(1)}</strong> 小时</span><span><strong>{latest ? formatShortDate(latest.date) : '—'}</strong> 最近</span></div>
+                  </button>;
+                })}
+              </div>
+            </>}
+          </div>
+        )}
+
+        {tab === 'stats' && (
+          <div className="view-content stats-view">
+            <div className="range-switcher" role="group" aria-label="统计时间范围">{ranges.map((item) => <button key={item} className={range === item ? 'active' : ''} onClick={() => setRange(item)} aria-pressed={range === item}>{item}</button>)}</div>
+            <section className="income-hero">
+              <p>{range}应收</p><strong>{cnMoney.format(stats.receivable)}</strong>
+              <span className="trend"><BarChart3 size={15} /> 较上月 +12%</span>
+              <div className="sparkline" aria-label="近四周收入趋势"><i style={{ height: '38%' }} /><i style={{ height: '58%' }} /><i style={{ height: '47%' }} /><i style={{ height: '82%' }} /><i style={{ height: '68%' }} /><i style={{ height: '100%' }} /></div>
+            </section>
+            <div className="metric-grid">
+              <Metric icon={<BookOpen />} label="完成课程" value={`${stats.count} 节`} />
+              <Metric icon={<Clock3 />} label="总课时" value={`${stats.hours.toFixed(1)} h`} />
+              <Metric icon={<CircleDollarSign />} label="平均时薪" value={`${cnMoney.format(stats.hourly)}/h`} />
+            </div>
+            <section className="payment-card">
+              <div className="section-heading compact"><div><p className="eyebrow">Payment</p><h3>收款进度</h3></div><strong>{stats.receivable ? Math.round(stats.paid / stats.receivable * 100) : 0}%</strong></div>
+              <div className="progress-track"><i style={{ transform: `scaleX(${stats.receivable ? stats.paid / stats.receivable : 0})` }} /></div>
+              <div className="payment-split"><span>已收 <strong>{cnMoney.format(stats.paid)}</strong></span><span>待收 <strong>{cnMoney.format(stats.unpaid)}</strong></span></div>
+            </section>
+            <section className="contribution-card">
+              <div className="section-heading compact"><div><p className="eyebrow">Students</p><h3>学生贡献</h3></div></div>
+              {students.map((student) => {
+                const amount = filteredLessons.filter((item) => item.studentId === student.id).reduce((sum, item) => sum + item.fee, 0);
+                const max = Math.max(1, ...students.map((person) => filteredLessons.filter((item) => item.studentId === person.id).reduce((sum, item) => sum + item.fee, 0)));
+                return <div className="contribution-row" key={student.id}><div className="avatar small" style={avatarStyle(student)}>{student.nickname?.[0] || student.name[0]}</div><div><span>{student.nickname || student.name}<strong>{cnMoney.format(amount)}</strong></span><div className="mini-track"><i style={{ transform: `scaleX(${amount / max})`, backgroundColor: studentColor(student) }} /></div></div></div>;
+              })}
+            </section>
+          </div>
+        )}
+
+        <nav className="tabbar" aria-label="主要导航">
+          <button className={tab === 'calendar' ? 'selected' : ''} onClick={() => switchTab('calendar')} aria-current={tab === 'calendar' ? 'page' : undefined}><CalendarDays size={20} />日历</button>
+          <button className={tab === 'students' ? 'selected' : ''} onClick={() => switchTab('students')} aria-current={tab === 'students' ? 'page' : undefined}><Users size={20} />学生</button>
+          <button className={tab === 'stats' ? 'selected' : ''} onClick={() => switchTab('stats')} aria-current={tab === 'stats' ? 'page' : undefined}><BarChart3 size={20} />统计</button>
+        </nav>
+
+        {lessonDraft && <LessonEditor draft={lessonDraft} students={students} onChange={setLessonDraft} onClose={() => setLessonDraft(null)} onSave={saveLesson} onDelete={() => deleteLesson(lessonDraft.id)} />}
+        {studentDraft && <StudentEditor draft={studentDraft} onChange={setStudentDraft} onClose={() => setStudentDraft(null)} onSave={saveStudent} />}
+        {pinDialogOpen && <ArchivePinDialog onClose={() => setPinDialogOpen(false)} onUnlock={() => { setArchiveUnlocked(true); setPinDialogOpen(false); }} />}
+        {savedToast && <div className="toast" role="status"><Check size={17} /> 已保存到本机</div>}
+      </section>
+    </main>
+  );
+}
+
+function WeekCalendar({ selectedDate, lessons, students, onSelectDate, onLesson }: { selectedDate: string; lessons: Lesson[]; students: Record<string, Student>; onSelectDate: (date: string) => void; onLesson: (lesson: Lesson) => void }) {
+  const start = weekStartFor(selectedDate);
+  const days = weekDays.map((label, index) => ({ label, date: dateFrom(start, index) }));
+  const hours = Array.from({ length: 15 }, (_, index) => index + 8);
+  const rowHeight = 56;
+  const totalHeight = hours.length * rowHeight;
+
+  return <div className="week-schedule-scroll" tabIndex={0} aria-label="周课程表，可横向滚动查看整周">
+    <div className="week-schedule">
+      <div className="week-header">
+        <span aria-hidden="true">时间</span>
+        {days.map((day) => <button key={day.date} className={day.date === selectedDate ? 'active' : ''} onClick={() => onSelectDate(day.date)} aria-pressed={day.date === selectedDate}><small>周{day.label}</small><strong>{Number(day.date.slice(-2))}</strong></button>)}
+      </div>
+      <div className="week-body" style={{ height: totalHeight }}>
+        <div className="time-axis" aria-hidden="true">{hours.map((hour) => <span key={hour} style={{ top: (hour - 8) * rowHeight }}>{String(hour).padStart(2, '0')}:00</span>)}</div>
+        <div className="week-columns">
+          {days.map((day) => <div className={`week-day ${day.date === selectedDate ? 'selected-day' : ''}`} key={day.date}>
+            {hours.map((hour) => <i className="week-hour-line" key={hour} style={{ top: (hour - 8) * rowHeight }} />)}
+            {lessons.filter((lesson) => lesson.date === day.date && lesson.status !== '已取消').map((lesson) => {
+              const [hour, minute] = lesson.startTime.split(':').map(Number);
+              const top = Math.max(0, ((hour - 8) * 60 + minute) / 60 * rowHeight);
+              const height = Math.max(42, lesson.duration / 60 * rowHeight - 3);
+              const student = students[lesson.studentId];
+              const color = studentColor(student);
+              return <button className={`week-lesson ${lesson.status === '已完成' ? 'completed' : ''}`} key={lesson.id} style={{ top, height, backgroundColor: color, borderColor: colorWash(color, 0.7), color: contrastText(color) }} onClick={() => onLesson(lesson)} aria-label={`${day.date} ${lesson.startTime}到${lesson.endTime}，${student?.nickname || student?.name}，${lesson.subject}${student?.locationShort ? `，${student.locationShort}` : ''}`}>
+                <strong>{lesson.startTime}–{lesson.endTime}</strong><span>{student?.nickname || student?.name}</span><small>{lesson.subject}{student?.locationShort ? ` · ${student.locationShort}` : ''}</small>
+              </button>;
+            })}
+          </div>)}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+function EmptyState({ icon, title, action, onAction }: { icon: React.ReactNode; title: string; action: string; onAction: () => void }) {
+  return <div className="empty-state"><span>{icon}</span><h4>{title}</h4><button className="secondary-button" onClick={onAction}><Plus size={16} />{action}</button></div>;
+}
+
+function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return <div className="metric-card"><span>{icon}</span><p>{label}</p><strong>{value}</strong></div>;
+}
+
+function StudentDetail({ student, lessons, onBack, onLesson, onEdit, archiveUnlocked, onRequestUnlock, onLock, onArchiveChange }: { student: Student; lessons: Lesson[]; onBack: () => void; onLesson: (lesson: Lesson) => void; onEdit: () => void; archiveUnlocked: boolean; onRequestUnlock: () => void; onLock: () => void; onArchiveChange: (changes: Partial<Student>) => void }) {
+  const completed = lessons.filter((item) => item.status === '已完成').sort((a, b) => b.date.localeCompare(a.date));
+  const hours = completed.reduce((sum, item) => sum + item.duration, 0) / 60;
+  const income = completed.reduce((sum, item) => sum + item.fee, 0);
+  return <div className="student-detail">
+    <div className="detail-actions"><button className="back-button" onClick={onBack}><ArrowLeft size={18} />全部学生</button><button className="text-button" onClick={onEdit}>编辑资料</button></div>
+    <section className="student-hero"><div className="avatar xlarge" style={avatarStyle(student)}>{student.nickname?.[0] || student.name[0]}</div><div><p className="eyebrow">{student.school}</p><h3>{student.nickname || student.name}</h3><p>{student.name} · {student.grade} · {student.subjects.join(' / ')}</p></div></section>
+    <div className="summary-strip"><span><strong>{completed.length}</strong>次课程</span><span><strong>{hours.toFixed(1)}</strong>小时</span><span><strong>{cnMoney.format(income)}</strong>累计</span></div>
+    <section className="location-card">
+      <div className="location-icon" style={{ backgroundColor: colorWash(studentColor(student), 0.18), color: studentColor(student) }}><MapPin size={19} aria-hidden="true" /></div>
+      <div><div className="location-card-heading"><strong>上课地点</strong><span style={{ backgroundColor: studentColor(student), color: contrastText(studentColor(student)) }}>{student.locationShort || '地点待填写'}</span></div><p>{student.fullAddress || '还没有填写详细地址。'}</p><small><Clock3 size={13} aria-hidden="true" />{student.commuteMinutes ? `单程通勤约 ${student.commuteMinutes} 分钟` : '还没有填写通勤时间'}</small></div>
+    </section>
+    <section className="profile-note"><GraduationCap size={18} /><div><strong>教学提醒</strong><p>{student.notes || '还没有添加教学提醒。'}</p></div></section>
+    <section className={`private-archive ${archiveUnlocked ? 'unlocked' : 'locked'}`}>
+      <header><div className="archive-icon">{archiveUnlocked ? <LockOpen size={19} aria-hidden="true" /> : <ShieldCheck size={19} aria-hidden="true" />}</div><div><p className="eyebrow">Private archive</p><h3>老师私密档案</h3></div>{archiveUnlocked && <button className="archive-lock-button" onClick={onLock}><LockKeyhole size={15} aria-hidden="true" />锁定</button>}</header>
+      {archiveUnlocked ? <div className="archive-fields">
+        <label><span>我对学生的评价</span><textarea value={student.teacherEvaluation || ''} onChange={(event) => onArchiveChange({ teacherEvaluation: event.target.value })} placeholder="学习习惯、性格、沟通方式、长期观察…" /></label>
+        <label><span>我对学生家长的评价</span><textarea value={student.parentEvaluation || ''} onChange={(event) => onArchiveChange({ parentEvaluation: event.target.value })} placeholder="沟通偏好、反馈节奏、需要留意的事项…" /></label>
+        <label><span>其他私人备注</span><textarea value={student.archiveNotes || ''} onChange={(event) => onArchiveChange({ archiveNotes: event.target.value })} placeholder="只给自己看的记录" /></label>
+        <p className="archive-save-hint"><Check size={14} aria-hidden="true" />修改会自动保存在本机</p>
+      </div> : <div className="archive-locked-state"><p>学生评价、家长评价和私人备注已隐藏。刷新页面后会自动重新锁定。</p><button className="primary-button" onClick={onRequestUnlock}><LockOpen size={17} aria-hidden="true" />解锁私密档案</button></div>}
+    </section>
+    <div className="section-heading compact"><div><p className="eyebrow">Learning path</p><h3>学习轨迹</h3></div></div>
+    <div className="timeline">{completed.map((lesson) => <button key={lesson.id} onClick={() => onLesson(lesson)}><i className={`mastery-dot ${lesson.mastery}`} /><div><span>{formatShortDate(lesson.date)} · {lesson.subject}</span><strong>{lesson.teachingContent}</strong><MasteryBadges lesson={lesson} /><p>{lesson.nextPlan ? `下次：${lesson.nextPlan}` : '还没有填写下次计划'}</p></div><ChevronRight size={16} aria-hidden="true" /></button>)}</div>
+  </div>;
+}
+
+function MasteryBadges({ lesson }: { lesson: Lesson }) {
+  const entries = [
+    { label: '已掌握', value: legacyMasteryText(lesson, '已掌握'), className: 'mastered' },
+    { label: '需巩固', value: legacyMasteryText(lesson, '需要巩固'), className: 'practice' },
+    { label: '未掌握', value: legacyMasteryText(lesson, '未掌握'), className: 'not-mastered' },
+  ].filter((entry) => entry.value.trim());
+  return entries.length ? <div className="mastery-badges">{entries.map((entry) => <span className={entry.className} key={entry.label}><b>{entry.label}</b>{entry.value}</span>)}</div> : <div className="mastery-badges"><span className="empty"><b>掌握记录</b>待补充</span></div>;
+}
+
+function LessonEditor({ draft, students, onChange, onClose, onSave, onDelete }: { draft: Lesson; students: Student[]; onChange: (lesson: Lesson) => void; onClose: () => void; onSave: (complete?: boolean) => void; onDelete: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  async function addPhotos(files: FileList | null) {
+    if (!files?.length) return;
+    const encoded = await Promise.all(Array.from(files).slice(0, 4).map(compressPhoto));
+    onChange({ ...draft, photos: [...draft.photos, ...encoded] });
+  }
+  function updateMastery(field: 'masteredWhat' | 'needsPracticeWhat' | 'notMasteredWhat', value: string) {
+    const next = {
+      ...draft,
+      masteredWhat: legacyMasteryText(draft, '已掌握'),
+      needsPracticeWhat: legacyMasteryText(draft, '需要巩固'),
+      notMasteredWhat: legacyMasteryText(draft, '未掌握'),
+      [field]: value,
+      masteryNotes: '',
+    };
+    const mastery: Mastery = next.notMasteredWhat.trim() ? '未掌握' : next.needsPracticeWhat.trim() ? '需要巩固' : next.masteredWhat.trim() ? '已掌握' : draft.mastery;
+    onChange({ ...next, mastery });
+  }
+  return <div className="sheet-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="sheet" role="dialog" aria-modal="true" aria-labelledby="lesson-title">
+      <div className="sheet-handle" />
+      <header className="sheet-header"><div><p className="eyebrow">Lesson journal</p><h2 id="lesson-title">课程记录</h2></div><IconButton label="关闭" onClick={onClose}><X size={20} /></IconButton></header>
+      <div className="form-grid two">
+        <label><span>学生</span><select value={draft.studentId} onChange={(event) => { const student = students.find((item) => item.id === event.target.value); onChange({ ...draft, studentId: event.target.value, fee: student?.defaultFee ?? draft.fee, duration: student?.defaultDuration ?? draft.duration }); }}>{students.map((student) => <option key={student.id} value={student.id}>{student.nickname || student.name}</option>)}</select></label>
+        <label><span>科目</span><select value={draft.subject} onChange={(event) => onChange({ ...draft, subject: event.target.value as Subject })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label>
+        <label><span>日期</span><input type="date" value={draft.date} onChange={(event) => onChange({ ...draft, date: event.target.value })} /></label>
+        <label><span>状态</span><select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as LessonStatus })}>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label><span>开始时间</span><input type="time" value={draft.startTime} onChange={(event) => onChange({ ...draft, startTime: event.target.value })} /></label>
+        <label><span>结束时间</span><input type="time" value={draft.endTime} onChange={(event) => onChange({ ...draft, endTime: event.target.value })} /></label>
+      </div>
+      <label className="field"><span>今天教了什么</span><textarea value={draft.teachingContent} onChange={(event) => onChange({ ...draft, teachingContent: event.target.value })} placeholder="分数乘除法、应用题、错题订正…" /></label>
+      <section className="mastery-records" aria-labelledby="mastery-records-title">
+        <div className="mastery-records-heading"><div><span className="field-title" id="mastery-records-title">掌握情况</span><small>三栏可以同时填写，不再只能选一个状态</small></div></div>
+        <label className="mastery-record mastered"><span><i />已掌握了什么</span><textarea value={legacyMasteryText(draft, '已掌握')} onChange={(event) => updateMastery('masteredWhat', event.target.value)} placeholder="例如：分数乘法步骤、基础约分…" /></label>
+        <label className="mastery-record practice"><span><i />需要巩固什么</span><textarea value={legacyMasteryText(draft, '需要巩固')} onChange={(event) => updateMastery('needsPracticeWhat', event.target.value)} placeholder="例如：多条件应用题、单位换算…" /></label>
+        <label className="mastery-record not-mastered"><span><i />还未掌握什么</span><textarea value={legacyMasteryText(draft, '未掌握')} onChange={(event) => updateMastery('notMasteredWhat', event.target.value)} placeholder="例如：不规则动词变化、题意判断…" /></label>
+      </section>
+      <div className="form-grid two">
+        <label><span>本次收费（元）</span><input type="number" min="0" value={draft.fee} onChange={(event) => onChange({ ...draft, fee: Number(event.target.value) })} /></label>
+        <label><span>收款状态</span><select value={draft.payment} onChange={(event) => onChange({ ...draft, payment: event.target.value as Payment })}><option>待收款</option><option>已收款</option></select></label>
+      </div>
+      <label className="field"><span>课堂表现</span><textarea value={draft.performance} onChange={(event) => onChange({ ...draft, performance: event.target.value })} placeholder="专注度、状态、课堂互动…" /></label>
+      <label className="field"><span>本次作业</span><textarea value={draft.homework} onChange={(event) => onChange({ ...draft, homework: event.target.value })} placeholder="需要完成的练习" /></label>
+      <label className="field"><span>下次继续</span><textarea value={draft.nextPlan} onChange={(event) => onChange({ ...draft, nextPlan: event.target.value })} placeholder="下节课打开就能看见的教学提醒" /></label>
+      <label className="field"><span>我的私人备注</span><textarea value={draft.privateNotes} onChange={(event) => onChange({ ...draft, privateNotes: event.target.value })} /></label>
+      <div className="photo-section"><div className="field-label"><span>课堂照片</span><small>自动压缩并保存在本机</small></div><div className="photo-grid">{draft.photos.map((photo, index) => <div className="photo-thumb" key={`${photo.slice(-12)}-${index}`}><img src={photo} alt={`课程附件 ${index + 1}`} /><button onClick={() => onChange({ ...draft, photos: draft.photos.filter((_, item) => item !== index) })} aria-label={`删除附件 ${index + 1}`}><X size={14} /></button></div>)}<button className="photo-add" onClick={() => fileRef.current?.click()}><Camera size={20} /><span>添加照片</span></button></div><input ref={fileRef} hidden type="file" multiple accept="image/*" onChange={(event) => addPhotos(event.target.files)} /></div>
+      <footer className="sheet-footer"><button className="danger-button" onClick={onDelete} aria-label="删除课程"><Trash2 size={18} /></button><button className="secondary-button grow" onClick={() => onSave(false)}>保存</button><button className="primary-button grow" onClick={() => onSave(true)}><Check size={18} />完成课程</button></footer>
+    </section>
+  </div>;
+}
+
+function ArchivePinDialog({ onClose, onUnlock }: { onClose: () => void; onUnlock: () => void }) {
+  const [settingPin] = useState(() => !localStorage.getItem('tutor-log-demo-archive-pin'));
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [error, setError] = useState('');
+  const [checking, setChecking] = useState(false);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError('');
+    if (!/^\d{4}$/.test(pin)) { setError('请输入 4 位数字密码。'); return; }
+    if (settingPin && pin !== confirmPin) { setError('两次输入的密码不一致。'); return; }
+    setChecking(true);
+    const value = await hashPin(pin);
+    if (settingPin) {
+      localStorage.setItem('tutor-log-demo-archive-pin', value);
+      onUnlock();
+    } else if (value === localStorage.getItem('tutor-log-demo-archive-pin')) {
+      onUnlock();
+    } else {
+      setError('密码不正确，请再试一次。');
+    }
+    setChecking(false);
+  }
+
+  return <div className="sheet-layer centered" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <form className="pin-dialog" role="dialog" aria-modal="true" aria-labelledby="pin-title" onSubmit={submit}>
+      <div className="pin-dialog-icon"><LockKeyhole size={22} aria-hidden="true" /></div>
+      <div><p className="eyebrow">Private archive</p><h2 id="pin-title">{settingPin ? '设置档案密码' : '解锁私密档案'}</h2><p>{settingPin ? '设置一个本机 4 位数字密码。之后每次刷新页面，私密档案都会重新锁定。' : '输入你设置的 4 位密码，查看学生与家长的私密评价。'}</p></div>
+      <label><span>4 位数字密码</span><input autoFocus type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} /></label>
+      {settingPin && <label><span>再次输入</span><input type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, 4))} /></label>}
+      {error && <p className="pin-error" role="alert">{error}</p>}
+      <div className="pin-actions"><button type="button" className="secondary-button" onClick={onClose}>取消</button><button className="primary-button" disabled={checking}>{checking ? '正在验证…' : settingPin ? '设置并解锁' : '解锁档案'}</button></div>
+      <small>密码只保存在当前设备。请妥善记住；清除浏览器数据会同时清除档案内容与密码。</small>
+    </form>
+  </div>;
+}
+
+function StudentEditor({ draft, onChange, onClose, onSave }: { draft: Student; onChange: (student: Student) => void; onClose: () => void; onSave: () => void }) {
+  return <div className="sheet-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="sheet compact-sheet" role="dialog" aria-modal="true" aria-labelledby="student-title"><div className="sheet-handle" /><header className="sheet-header"><div><p className="eyebrow">Student profile</p><h2 id="student-title">学生档案</h2></div><IconButton label="关闭" onClick={onClose}><X size={20} /></IconButton></header>
+    <div className="form-grid two">
+      <label><span>姓名 *</span><input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="学生姓名" /></label>
+      <label><span>昵称</span><input value={draft.nickname} onChange={(event) => onChange({ ...draft, nickname: event.target.value })} placeholder="日常称呼" /></label>
+      <label><span>年级</span><input value={draft.grade} onChange={(event) => onChange({ ...draft, grade: event.target.value })} /></label>
+      <label><span>学校</span><input value={draft.school} onChange={(event) => onChange({ ...draft, school: event.target.value })} /></label>
+      <label><span>家长姓名</span><input value={draft.parentName} onChange={(event) => onChange({ ...draft, parentName: event.target.value })} /></label>
+      <label><span>家长电话</span><input inputMode="tel" value={draft.parentPhone} onChange={(event) => onChange({ ...draft, parentPhone: event.target.value })} /></label>
+      <label><span>默认时长（分钟）</span><input type="number" min="0" value={draft.defaultDuration} onChange={(event) => onChange({ ...draft, defaultDuration: Number(event.target.value) })} /></label>
+      <label><span>默认课费（元）</span><input type="number" min="0" value={draft.defaultFee} onChange={(event) => onChange({ ...draft, defaultFee: Number(event.target.value) })} /></label>
+      <label><span>课表地点简称</span><input maxLength={10} value={draft.locationShort || ''} onChange={(event) => onChange({ ...draft, locationShort: event.target.value })} placeholder="如：徐家汇、学生家" /></label>
+      <label><span>单程通勤（分钟）</span><input type="number" inputMode="numeric" min="0" value={draft.commuteMinutes || ''} onChange={(event) => onChange({ ...draft, commuteMinutes: Number(event.target.value) })} placeholder="预计时间" /></label>
+    </div>
+    <label className="field"><span>详细地址</span><textarea value={draft.fullAddress || ''} onChange={(event) => onChange({ ...draft, fullAddress: event.target.value })} placeholder="仅在学生资料中展示，不显示在课表上" /></label>
+    <fieldset className="color-field"><legend>学生专属颜色</legend><div className="color-picker-row"><div className="color-swatches" role="group" aria-label="常用颜色">{studentColorPalette.map((color) => <button type="button" key={color} className={(draft.color || studentColorPalette[0]) === color ? 'selected' : ''} style={{ backgroundColor: color, color: contrastText(color) }} onClick={() => onChange({ ...draft, color })} aria-label={`选择颜色 ${color}`} aria-pressed={(draft.color || studentColorPalette[0]) === color}><Check size={14} aria-hidden="true" /></button>)}</div><label className="custom-color"><Palette size={16} aria-hidden="true" /><span>自选</span><input type="color" value={draft.color || studentColorPalette[0]} onChange={(event) => onChange({ ...draft, color: event.target.value })} aria-label="自定义学生颜色" /></label></div><small>会用于头像、月历标记和周课表课程块。</small></fieldset>
+    <fieldset className="subject-field"><legend>所教学科</legend><div>{subjects.map((subject) => <button type="button" key={subject} className={draft.subjects.includes(subject) ? 'selected' : ''} onClick={() => onChange({ ...draft, subjects: draft.subjects.includes(subject) ? draft.subjects.filter((item) => item !== subject) : [...draft.subjects, subject] })}>{subject}</button>)}</div></fieldset>
+    <label className="field"><span>教学提醒</span><textarea value={draft.notes} onChange={(event) => onChange({ ...draft, notes: event.target.value })} placeholder="长期关注点、学习习惯…" /></label>
+    <footer className="sheet-footer"><button className="secondary-button grow" onClick={onClose}>取消</button><button className="primary-button grow" onClick={onSave}><Check size={18} />保存学生</button></footer>
+  </section></div>;
+}
